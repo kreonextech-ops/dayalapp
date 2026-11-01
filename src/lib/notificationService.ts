@@ -19,7 +19,7 @@ export interface NotificationItem {
   created_at: string;
   title: string;
   message: string;
-  module: 'lead' | 'client' | 'project' | 'service' | 'task' | 'general';
+  module: 'lead' | 'client' | 'project' | 'service' | 'task' | 'communication' | 'followup' | 'general';
   reference_id?: string;
   recipient_role: 'Admin' | 'Employee' | 'All_Staff';
   recipient_user_id?: string;
@@ -202,7 +202,7 @@ export async function createNotification({
 }: {
   title: string;
   message: string;
-  module?: 'lead' | 'client' | 'project' | 'service' | 'task' | 'general';
+  module?: 'lead' | 'client' | 'project' | 'service' | 'task' | 'communication' | 'followup' | 'general';
   referenceId?: string;
   recipientRole?: 'Admin' | 'Employee' | 'All_Staff';
   recipientUserId?: string;
@@ -367,5 +367,26 @@ export async function markNotificationAsRead(id: string) {
     await supabase.from('notifications').update({ is_read: true }).eq('id', id);
   } catch (err) {
     console.warn('Mark read error:', err);
+  }
+}
+
+/**
+ * Mark all visible unread notifications as read
+ */
+export async function markAllNotificationsAsRead(userRole: string, userId?: string) {
+  try {
+    let query = supabase.from('notifications').update({ is_read: true }).eq('is_read', false);
+    if (userRole === 'Admin') {
+      query = query.or('recipient_role.eq.Admin,recipient_role.eq.All_Staff');
+    } else if (userRole === 'Employee' || userRole === 'CRO') {
+      query = query.or(
+        `recipient_role.eq.Employee,recipient_role.eq.All_Staff${
+          userId ? `,recipient_user_id.eq.${userId}` : ''
+        }`
+      );
+    }
+    await query;
+  } catch (err) {
+    console.warn('Mark all read error:', err);
   }
 }

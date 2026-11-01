@@ -437,6 +437,16 @@ export default function ProjectDetailsScreen({ route, navigation }: any) {
     try {
       const { error } = await supabase.from('projects').update({ assigned_to: newAssignedString || null }).eq('id', id);
       if (error) throw error;
+
+      await createNotification({
+        title: '👥 Project Team Assigned',
+        message: `${project.name} assignment: ${newAssignedString || 'Unassigned'}`,
+        module: 'project',
+        referenceId: id,
+        recipientRole: 'All_Staff',
+        recipientUserId: empId,
+        createdByName: user?.name,
+      });
     } catch (e: any) {
       console.warn('Failed to update assigned employee', e.message);
     }

@@ -436,6 +436,16 @@ export default function ServiceDetailsScreen({ route, navigation }: any) {
     try {
       const { error } = await supabase.from('services').update({ assigned_to: newAssignedString || null }).eq('id', id);
       if (error) throw error;
+
+      await createNotification({
+        title: '👥 Service Team Assigned',
+        message: `${service.title || 'Service'} team assignment: ${newAssignedString || 'Unassigned'}`,
+        module: 'service',
+        referenceId: id,
+        recipientRole: 'All_Staff',
+        recipientUserId: empId,
+        createdByName: user?.name,
+      });
     } catch (e: any) {
       console.warn('Failed to update assigned employee', e.message);
     }

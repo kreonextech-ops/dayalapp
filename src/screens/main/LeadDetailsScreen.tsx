@@ -347,6 +347,15 @@ export default function LeadDetailsScreen({ route, navigation }: any) {
         },
       ]);
 
+      await createNotification({
+        title: '🔥 Lead Temperature Updated',
+        message: `${lead.name}'s priority updated to "${newTemp}"`,
+        module: 'lead',
+        referenceId: id,
+        recipientRole: 'All_Staff',
+        createdByName: user?.name,
+      });
+
       loadLeadFull();
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to update temperature');
@@ -369,6 +378,16 @@ export default function LeadDetailsScreen({ route, navigation }: any) {
     try {
       const { error } = await supabase.from('leads').update({ assigned_to: newAssignedString || null }).eq('id', id);
       if (error) throw error;
+
+      await createNotification({
+        title: '👥 Lead Assignment Updated',
+        message: `${lead.name} assigned team: ${newAssignedString || 'Unassigned'}`,
+        module: 'lead',
+        referenceId: id,
+        recipientRole: 'All_Staff',
+        recipientUserId: empId,
+        createdByName: user?.name,
+      });
     } catch (e: any) {
       console.warn('Failed to update assigned employee', e.message);
     }
@@ -411,6 +430,15 @@ export default function LeadDetailsScreen({ route, navigation }: any) {
         supabase.from('lead_activities').update({ client_id: newClientId }).eq('lead_id', id),
         supabase.from('leads').update({ status: 'Success' }).eq('id', id),
       ]);
+
+      await createNotification({
+        title: '🎉 Lead Converted to Client!',
+        message: `${lead.name} was successfully enrolled as an official Client`,
+        module: 'client',
+        referenceId: newClientId,
+        recipientRole: 'All_Staff',
+        createdByName: user?.name,
+      });
 
       Alert.alert('Lead Converted!', `${lead.name} has been successfully enrolled as an official Client.`, [
         {
@@ -482,6 +510,16 @@ export default function LeadDetailsScreen({ route, navigation }: any) {
         },
       ]);
 
+      await createNotification({
+        title: '📅 New Follow-Up Scheduled',
+        message: `${lead.name}: "${followUpTitle.trim()}" due ${followUpDue}`,
+        module: 'followup',
+        referenceId: id,
+        recipientRole: 'All_Staff',
+        recipientUserId: user?.id,
+        createdByName: user?.name,
+      });
+
       setIsFollowUpModalOpen(false);
       setFollowUpTitle('');
       setFollowUpDesc('');
@@ -510,6 +548,16 @@ export default function LeadDetailsScreen({ route, navigation }: any) {
         },
       ]);
       if (error) throw error;
+
+      await createNotification({
+        title: `📞 ${commType} Logged (${commOutcome})`,
+        message: `${lead.name}: "${commResponse.trim().substring(0, 75)}"`,
+        module: 'communication',
+        referenceId: id,
+        recipientRole: 'All_Staff',
+        createdByName: user?.name,
+      });
+
       setIsCommModalOpen(false);
       setCommResponse('');
       loadLeadFull();

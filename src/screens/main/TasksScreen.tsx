@@ -117,6 +117,17 @@ export default function TasksScreen({ navigation }: any) {
       const { error } = await supabase.from('tasks').update({ status: nextStatus }).eq('id', task.id);
       if (error) throw error;
       setTasks(prev => prev.map(t => (t.id === task.id ? { ...t, status: nextStatus } : t)));
+
+      if (nextStatus === 'Completed') {
+        await createNotification({
+          title: '✅ Task Completed',
+          message: `"${task.title || task.name}" marked complete by ${user?.name || 'Staff'}`,
+          module: 'task',
+          referenceId: task.id,
+          recipientRole: 'All_Staff',
+          createdByName: user?.name,
+        });
+      }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Could not update task');
     }

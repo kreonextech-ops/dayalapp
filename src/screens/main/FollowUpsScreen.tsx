@@ -162,6 +162,17 @@ export default function FollowUpsScreen({ navigation }: any) {
     try {
       await supabase.from('tasks').update({ status: newStatus }).eq('id', item.id);
       setFollowUps(prev => prev.map(f => (f.id === item.id ? { ...f, status: newStatus } : f)));
+
+      if (newStatus === 'Completed') {
+        await createNotification({
+          title: '✅ Follow-Up Completed',
+          message: `"${item.title}" marked completed by ${user?.name || 'Staff'}`,
+          module: 'followup',
+          referenceId: item.id,
+          recipientRole: 'All_Staff',
+          createdByName: user?.name,
+        });
+      }
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to update status');
     }

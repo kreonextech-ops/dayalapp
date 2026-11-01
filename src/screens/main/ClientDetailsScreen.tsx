@@ -343,6 +343,16 @@ export default function ClientDetailsScreen({ route, navigation }: any) {
     try {
       const { error } = await supabase.from('clients').update({ assigned_to: newAssignedString || null }).eq('id', id);
       if (error) throw error;
+
+      await createNotification({
+        title: '👥 Client Team Assigned',
+        message: `${client.name} team assigned: ${newAssignedString || 'Unassigned'}`,
+        module: 'client',
+        referenceId: id,
+        recipientRole: 'All_Staff',
+        recipientUserId: empId,
+        createdByName: user?.name,
+      });
     } catch (e: any) {
       console.warn('Failed to update assigned employee', e.message);
     }
@@ -403,6 +413,15 @@ export default function ClientDetailsScreen({ route, navigation }: any) {
           employee_name: user?.name || 'Staff',
         },
       ]);
+
+      await createNotification({
+        title: '🔥 Client Priority Updated',
+        message: `${client.name}'s priority temperature set to "${newTemp}"`,
+        module: 'client',
+        referenceId: id,
+        recipientRole: 'All_Staff',
+        createdByName: user?.name,
+      });
 
       loadClientData();
     } catch (e: any) {
