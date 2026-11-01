@@ -12,6 +12,7 @@ import {
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -34,6 +35,7 @@ import {
   CheckCircle2,
   X,
   ShieldCheck,
+  FileText,
 } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
@@ -221,6 +223,12 @@ export default function ProfileScreen({ navigation }: any) {
             title="About Dayal CRM"
             subtitle="Version 1.0.0 (Production Ready)"
             onPress={() => setIsAboutModalOpen(true)}
+          />
+          <SettingRow
+            icon={<FileText color={Colors.primaryDark} size={20} />}
+            title="Privacy Policy"
+            subtitle="dayalconstructions.com/privacy-policy"
+            onPress={() => Linking.openURL('https://dayalconstructions.com/privacy-policy')}
           />
         </View>
 
