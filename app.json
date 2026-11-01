@@ -4,22 +4,40 @@
     "slug": "DayalCRMApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/favicondayal.jpeg",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/favicondayal.jpeg",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dayal.crmapp",
+      "buildNumber": "1"
     },
     "android": {
+      "package": "com.dayal.crmapp",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/favicondayal.jpeg",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "softwareKeyboardLayoutMode": "resize",
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicondayal.jpeg"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a4bc42f4-b45c-45f3-8d7d-9d0cf1dbfade"
+      }
+    },
+    "owner": "kreonex",
+    "plugins": [
+      "expo-status-bar"
+    ]
   }
 }
