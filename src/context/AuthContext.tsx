@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import { syncUserPushToken } from '../lib/notificationService';
 
 export type UserRole = 'Admin' | 'CRO' | 'Employee' | 'Staff' | 'Client' | null;
 
@@ -41,6 +42,9 @@ export const AuthProvider = ({ children }: any) => {
           const parsedUser = JSON.parse(storedUser);
           setRole(storedRole as UserRole);
           setUser(parsedUser);
+          if (parsedUser?.id && storedRole !== 'Client') {
+            syncUserPushToken(parsedUser.id);
+          }
         }
       } catch (e) {
         console.error('Failed to load auth', e);
@@ -102,6 +106,10 @@ export const AuthProvider = ({ children }: any) => {
       setUser(profile);
       await AsyncStorage.setItem('@user_role', normalizedRole);
       await AsyncStorage.setItem('@user_data', JSON.stringify(profile));
+
+      if (profile.id) {
+        syncUserPushToken(profile.id);
+      }
 
       return { success: true };
     } catch (err: any) {
