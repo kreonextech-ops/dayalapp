@@ -43,7 +43,7 @@ export const AuthProvider = ({ children }: any) => {
           setRole(storedRole as UserRole);
           setUser(parsedUser);
           if (parsedUser?.id && storedRole !== 'Client') {
-            syncUserPushToken(parsedUser.id);
+            syncUserPushToken(parsedUser.id, storedRole);
           }
         }
       } catch (e) {
@@ -108,7 +108,7 @@ export const AuthProvider = ({ children }: any) => {
       await AsyncStorage.setItem('@user_data', JSON.stringify(profile));
 
       if (profile.id) {
-        syncUserPushToken(profile.id);
+        syncUserPushToken(profile.id, normalizedRole);
       }
 
       return { success: true };

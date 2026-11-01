@@ -86,14 +86,15 @@ export async function setupSystemNotifications(): Promise<boolean> {
 }
 
 /**
- * Saves or updates the device push token in the employee's record
+ * Saves or updates the device push token in the employee's record.
+ * STRICTURE: Clients are NEVER registered for push notifications.
  */
-export async function syncUserPushToken(userId: string) {
-  if (!userId) return;
+export async function syncUserPushToken(userId: string, userRole?: string) {
+  if (!userId || userRole === 'Client') return;
   try {
     const token = await registerForPushNotificationsAsync();
     if (token) {
-      // Attempt updating push_token in employees table
+      // Update push_token strictly in employees table (NEVER clients)
       await supabase
         .from('employees')
         .update({ push_token: token })
@@ -230,9 +231,24 @@ export async function createNotification({
       data: { module, referenceId },
     });
 
-    // 3. Dispatch Remote Push to recipient devices
+    // 3. Dispatch Remote Push to recipient devices (STRICTLY Staff & Admin, NEVER Clients)
+    const targetTokens = new Set<string>();
+
+    // A. Always notify Admins so Admin gets 100% of all CRM events
+    const { data: adminList } = await supabase
+      .from('employees')
+      .select('push_token')
+      .ilike('role', '%admin%')
+      .not('push_token', 'is', null);
+
+    if (adminList) {
+      for (const admin of adminList) {
+        if (admin.push_token) targetTokens.add(admin.push_token);
+      }
+    }
+
+    // B. Target specific employee if assigned
     if (recipientUserId) {
-      // Find recipient employee's push token
       const { data: recipientEmp } = await supabase
         .from('employees')
         .select('push_token')
@@ -240,32 +256,30 @@ export async function createNotification({
         .maybeSingle();
 
       if (recipientEmp?.push_token) {
-        await sendRemotePushNotification({
-          toToken: recipientEmp.push_token,
-          title,
-          body: message,
-          data: { module, referenceId },
-        });
+        targetTokens.add(recipientEmp.push_token);
       }
-    } else {
-      // Broad push to staff with active tokens
+    } else if (recipientRole === 'All_Staff') {
+      // Broad push to all staff
       const { data: staffList } = await supabase
         .from('employees')
         .select('push_token')
         .not('push_token', 'is', null);
 
-      if (staffList && staffList.length > 0) {
+      if (staffList) {
         for (const staff of staffList) {
-          if (staff.push_token) {
-            await sendRemotePushNotification({
-              toToken: staff.push_token,
-              title,
-              body: message,
-              data: { module, referenceId },
-            });
-          }
+          if (staff.push_token) targetTokens.add(staff.push_token);
         }
       }
+    }
+
+    // C. Dispatch to all identified staff/admin tokens (NEVER clients)
+    for (const token of targetTokens) {
+      await sendRemotePushNotification({
+        toToken: token,
+        title,
+        body: message,
+        data: { module, referenceId },
+      });
     }
   } catch (err) {
     console.warn('Error creating notification:', err);
@@ -274,13 +288,17 @@ export async function createNotification({
 
 /**
  * Real-time listener on Supabase notifications table
+ * GUARANTEE: Clients receive 0 notifications. Admins receive 100% of all notifications.
  */
 export function startRealtimeNotificationListener(
   userRole: string,
   userId?: string,
   onNotificationReceived?: (notification: NotificationItem) => void
 ) {
+  // STRICT RULE: Clients NEVER receive any notifications
   if (userRole === 'Client') return () => {};
+
+  const isAdmin = userRole === 'Admin';
 
   const channel = supabase
     .channel('realtime_device_notifications')
@@ -295,14 +313,18 @@ export function startRealtimeNotificationListener(
         const newNotif = payload.new as NotificationItem;
         if (!newNotif) return;
 
+        // Admin receives ALL notifications; employees receive All_Staff or their assigned ones
         const roleMatches =
+          isAdmin ||
           newNotif.recipient_role === 'All_Staff' ||
-          newNotif.recipient_role === userRole ||
-          (userRole === 'Admin' && (newNotif.recipient_role === 'Employee' || newNotif.recipient_role === 'Admin'));
+          newNotif.recipient_role === userRole;
 
-        const userMatches = !newNotif.recipient_user_id || newNotif.recipient_user_id === userId;
+        const userMatches =
+          isAdmin ||
+          !newNotif.recipient_user_id ||
+          newNotif.recipient_user_id === userId;
 
-        if (roleMatches || userMatches) {
+        if (roleMatches && userMatches) {
           await triggerDevicePushNotification({
             title: newNotif.title,
             body: newNotif.message,
@@ -324,25 +346,26 @@ export function startRealtimeNotificationListener(
 
 /**
  * Fetch notifications for current user role
+ * GUARANTEE: Clients get empty list. Admin gets ALL company notifications.
  */
 export async function fetchUserNotifications(userRole: string, userId?: string) {
+  // STRICT RULE: Clients NEVER receive notifications
+  if (userRole === 'Client') return [];
+
   try {
     let query = supabase
       .from('notifications')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(30);
+      .limit(50);
 
-    if (userRole === 'Admin') {
-      query = query.or('recipient_role.eq.Admin,recipient_role.eq.All_Staff');
-    } else if (userRole === 'Employee' || userRole === 'CRO') {
+    // Admin receives ALL notifications across the company (no restrictive filter)
+    if (userRole !== 'Admin') {
       query = query.or(
         `recipient_role.eq.Employee,recipient_role.eq.All_Staff${
           userId ? `,recipient_user_id.eq.${userId}` : ''
         }`
       );
-    } else {
-      return [];
     }
 
     const { data, error } = await query;
@@ -374,11 +397,11 @@ export async function markNotificationAsRead(id: string) {
  * Mark all visible unread notifications as read
  */
 export async function markAllNotificationsAsRead(userRole: string, userId?: string) {
+  if (userRole === 'Client') return;
+
   try {
     let query = supabase.from('notifications').update({ is_read: true }).eq('is_read', false);
-    if (userRole === 'Admin') {
-      query = query.or('recipient_role.eq.Admin,recipient_role.eq.All_Staff');
-    } else if (userRole === 'Employee' || userRole === 'CRO') {
+    if (userRole !== 'Admin') {
       query = query.or(
         `recipient_role.eq.Employee,recipient_role.eq.All_Staff${
           userId ? `,recipient_user_id.eq.${userId}` : ''
