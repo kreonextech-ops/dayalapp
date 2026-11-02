@@ -7,6 +7,7 @@ export type UserRole = 'Admin' | 'CRO' | 'Employee' | 'Staff' | 'Client' | null;
 
 export interface AppUser {
   id?: string;
+  clientId?: string;
   name?: string;
   email: string;
   role: UserRole;
@@ -22,7 +23,7 @@ interface AuthContextData {
   isClient: boolean;
   loading: boolean;
   signInEmployee: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
-  signInClient: (emailOrPhone: string) => Promise<{ success: boolean; error?: string }>;
+  signInClient: (identifier: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
 }
 
@@ -89,6 +90,14 @@ export const AuthProvider = ({ children }: any) => {
         return { success: false, error: 'Incorrect password.' };
       }
 
+      // STRICT: Client accounts CANNOT log in from the Staff Login portal
+      if (data.role === 'Client') {
+        return {
+          success: false,
+          error: 'This account is for the Client Portal. Please use Client Login to access your project dashboard.',
+        };
+      }
+
       // Standardize role: Admin / CRO / Employee
       const rawRole = data.role || 'Employee';
       const normalizedRole: UserRole = rawRole.toLowerCase() === 'admin' ? 'Admin' : (rawRole === 'CRO' ? 'CRO' : 'Employee');
@@ -117,32 +126,94 @@ export const AuthProvider = ({ children }: any) => {
     }
   };
 
-  const signInClient = async (emailOrPhone: string) => {
+  const signInClient = async (identifier: string, password?: string) => {
     try {
-      const identifier = emailOrPhone.trim();
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .or(`email.ilike.${identifier},phone.ilike.${identifier}`)
-        .limit(1);
+      const trimmed = identifier.trim().toLowerCase();
 
-      if (error || !data || data.length === 0) {
-        return { success: false, error: 'Client record not found.' };
+      // 1. Primary check: employees table where role = 'Client'
+      const { data: empClient } = await supabase
+        .from('employees')
+        .select('*')
+        .ilike('email', trimmed)
+        .eq('role', 'Client')
+        .maybeSingle();
+
+      if (empClient) {
+        if (password && empClient.password && empClient.password !== password) {
+          return { success: false, error: 'Incorrect password.' };
+        }
+
+        const clientId = empClient.department;
+        let clientDisplayName = empClient.name;
+
+        // Fetch client name & info from clients table if linked
+        if (clientId) {
+          const { data: cData } = await supabase
+            .from('clients')
+            .select('name')
+            .eq('id', clientId)
+            .maybeSingle();
+          if (cData?.name) clientDisplayName = cData.name;
+        }
+
+        const clientProfile: AppUser = {
+          id: empClient.id,
+          clientId: clientId || empClient.id,
+          name: clientDisplayName || 'Valued Client',
+          email: empClient.email,
+          role: 'Client',
+        };
+
+        setRole('Client');
+        setUser(clientProfile);
+        await AsyncStorage.setItem('@user_role', 'Client');
+        await AsyncStorage.setItem('@user_data', JSON.stringify(clientProfile));
+        syncUserPushToken(empClient.id, 'Client');
+
+        return { success: true };
       }
 
-      const client = data[0];
-      const clientProfile: AppUser = {
-        id: client.id,
-        name: client.name || 'Valued Client',
-        email: client.email || identifier,
-        role: 'Client',
-      };
+      // 2. Prevent employees/admins from logging in here
+      const { data: staffAccount } = await supabase
+        .from('employees')
+        .select('id, role')
+        .ilike('email', trimmed)
+        .maybeSingle();
 
-      setRole('Client');
-      setUser(clientProfile);
-      await AsyncStorage.setItem('@user_role', 'Client');
-      await AsyncStorage.setItem('@user_data', JSON.stringify(clientProfile));
-      return { success: true };
+      if (staffAccount && staffAccount.role !== 'Client') {
+        return {
+          success: false,
+          error: 'This is the Client Portal. Employees and Admins must log in through Staff Login.',
+        };
+      }
+
+      // 3. Fallback: check clients table by email or phone
+      const { data: directClient } = await supabase
+        .from('clients')
+        .select('*')
+        .or(`email.ilike.${trimmed},phone.ilike.${trimmed}`)
+        .limit(1);
+
+      if (directClient && directClient.length > 0) {
+        const c = directClient[0];
+        const clientProfile: AppUser = {
+          id: c.id,
+          clientId: c.id,
+          name: c.name || 'Valued Client',
+          email: c.email || trimmed,
+          role: 'Client',
+        };
+
+        setRole('Client');
+        setUser(clientProfile);
+        await AsyncStorage.setItem('@user_role', 'Client');
+        await AsyncStorage.setItem('@user_data', JSON.stringify(clientProfile));
+        syncUserPushToken(c.id, 'Client');
+
+        return { success: true };
+      }
+
+      return { success: false, error: 'Client account not found. Please contact Dayal office.' };
     } catch (err: any) {
       return { success: false, error: err.message || 'Client login failed' };
     }

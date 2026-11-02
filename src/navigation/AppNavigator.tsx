@@ -1,11 +1,14 @@
 import React from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useAuth } from '../context/AuthContext';
 
 import LoginSelectionScreen from '../screens/auth/LoginSelectionScreen';
 import EmployeeLoginScreen from '../screens/auth/EmployeeLoginScreen';
 import ClientLoginScreen from '../screens/auth/ClientLoginScreen';
 import TabNavigator from './TabNavigator';
+import ClientTabNavigator from './ClientTabNavigator';
 
 // Forms and Details
 import LeadsScreen from '../screens/main/LeadsScreen';
@@ -29,20 +32,40 @@ import AuditLogsScreen from '../screens/main/AuditLogsScreen';
 import EmployeesScreen from '../screens/main/EmployeesScreen';
 import EmployeeDetailsScreen from '../screens/main/EmployeeDetailsScreen';
 import ClientLoginsScreen from '../screens/main/ClientLoginsScreen';
+import ClientHubScreen from '../screens/main/ClientHubScreen';
 import AssignmentsScreen from '../screens/main/AssignmentsScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
+  const { user, role, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0B132B' }}>
+        <ActivityIndicator size="large" color="#E5A93C" />
+      </View>
+    );
+  }
+
+  const initialRoute = !user 
+    ? 'LoginSelection' 
+    : role === 'Client' 
+      ? 'ClientApp' 
+      : 'MainApp';
+
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
         {/* Auth Stack */}
         <Stack.Screen name="LoginSelection" component={LoginSelectionScreen} />
         <Stack.Screen name="EmployeeLogin" component={EmployeeLoginScreen} />
         <Stack.Screen name="ClientLogin" component={ClientLoginScreen} />
         
-        {/* Main App */}
+        {/* Client Portal Tab Navigator */}
+        <Stack.Screen name="ClientApp" component={ClientTabNavigator} />
+
+        {/* Staff/Admin Main App */}
         <Stack.Screen name="MainApp" component={TabNavigator} />
         
         {/* Leads */}
@@ -73,6 +96,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Employees" component={EmployeesScreen} />
         <Stack.Screen name="EmployeeDetails" component={EmployeeDetailsScreen} />
         <Stack.Screen name="ClientLogins" component={ClientLoginsScreen} />
+        <Stack.Screen name="ClientHub" component={ClientHubScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

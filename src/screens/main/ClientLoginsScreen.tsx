@@ -25,6 +25,7 @@ import {
   Mail,
   X,
   ShieldCheck,
+  ChevronRight,
 } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
@@ -174,7 +175,11 @@ export default function ClientLoginsScreen({ navigation }: any) {
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           renderItem={({ item }) => (
-            <View style={styles.card}>
+            <TouchableOpacity 
+              style={styles.card}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('ClientHub', { clientLogin: item })}
+            >
               <View style={styles.cardLeft}>
                 <View style={styles.keyCircle}>
                   <Key size={18} color={Colors.primaryDark} />
@@ -187,15 +192,24 @@ export default function ClientLoginsScreen({ navigation }: any) {
                   </View>
                   <View style={styles.portalBadge}>
                     <ShieldCheck size={11} color="#059669" />
-                    <Text style={styles.portalBadgeText}>Client Portal Active</Text>
+                    <Text style={styles.portalBadgeText}>Client Portal • Tap to Manage</Text>
                   </View>
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteLogin(item)}>
-                <Trash2 size={18} color={Colors.danger} />
-              </TouchableOpacity>
-            </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TouchableOpacity 
+                  style={styles.deleteBtn} 
+                  onPress={(e) => {
+                    handleDeleteLogin(item);
+                  }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Trash2 size={18} color={Colors.danger} />
+                </TouchableOpacity>
+                <ChevronRight size={18} color={Colors.textMuted} />
+              </View>
+            </TouchableOpacity>
           )}
           ListEmptyComponent={
             <View style={styles.empty}>

@@ -20,11 +20,11 @@ export default function ClientLoginScreen({ navigation }: any) {
     }
 
     setIsSubmitting(true);
-    const res = await signInClient(email);
+    const res = await signInClient(email, password);
     setIsSubmitting(false);
 
     if (res.success) {
-      navigation.replace('MainApp');
+      navigation.replace('ClientApp');
     } else {
       Alert.alert('Login Failed', res.error || 'Client record not found.');
     }

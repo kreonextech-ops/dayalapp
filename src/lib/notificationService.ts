@@ -19,9 +19,9 @@ export interface NotificationItem {
   created_at: string;
   title: string;
   message: string;
-  module: 'lead' | 'client' | 'project' | 'service' | 'task' | 'communication' | 'followup' | 'general';
+  module: 'lead' | 'client' | 'project' | 'service' | 'task' | 'communication' | 'followup' | 'general' | 'chat' | 'message' | 'milestone';
   reference_id?: string;
-  recipient_role: 'Admin' | 'Employee' | 'All_Staff';
+  recipient_role: 'Admin' | 'Employee' | 'All_Staff' | 'Client';
   recipient_user_id?: string;
   is_read: boolean;
   created_by_name?: string;
@@ -411,5 +411,128 @@ export async function markAllNotificationsAsRead(userRole: string, userId?: stri
     await query;
   } catch (err) {
     console.warn('Mark all read error:', err);
+  }
+}
+
+/**
+ * Creates and dispatches a notification specifically to a Client
+ * (e.g. When Admin/Staff completes a milestone, posts an update, or uploads drawings)
+ */
+export async function createClientNotification({
+  clientId,
+  clientEmpId,
+  title,
+  message,
+  module = 'milestone',
+  referenceId,
+  createdByName = 'Dayal Construction Team',
+}: {
+  clientId: string;
+  clientEmpId?: string;
+  title: string;
+  message: string;
+  module?: string;
+  referenceId?: string;
+  createdByName?: string;
+}) {
+  try {
+    const targetUserId = clientEmpId || clientId;
+
+    // 1. Insert in notifications table targeted strictly to this Client
+    await supabase.from('notifications').insert([
+      {
+        title,
+        message,
+        module,
+        reference_id: referenceId || clientId,
+        recipient_role: 'Client',
+        recipient_user_id: targetUserId,
+        created_by_name: createdByName,
+        is_read: false,
+      },
+    ]);
+
+    // 2. Dispatch remote push if client device has a push token registered
+    let targetPushToken: string | null = null;
+    if (clientEmpId) {
+      const { data: empRecord } = await supabase
+        .from('employees')
+        .select('push_token')
+        .eq('id', clientEmpId)
+        .maybeSingle();
+      targetPushToken = empRecord?.push_token || null;
+    }
+
+    if (targetPushToken) {
+      await sendRemotePushNotification({
+        toToken: targetPushToken,
+        title,
+        body: message,
+        data: { module, referenceId: referenceId || clientId },
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to create client notification:', err);
+  }
+}
+
+/**
+ * Fetches notifications specifically for a logged-in Client
+ */
+export async function fetchClientNotifications(clientId?: string, clientEmpId?: string) {
+  try {
+    let orConditions: string[] = [];
+    if (clientEmpId) orConditions.push(`recipient_user_id.eq.${clientEmpId}`);
+    if (clientId) orConditions.push(`recipient_user_id.eq.${clientId}`);
+    if (clientId) orConditions.push(`reference_id.eq.${clientId}`);
+
+    let query = supabase
+      .from('notifications')
+      .select('*')
+      .eq('recipient_role', 'Client')
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (orConditions.length > 0) {
+      query = query.or(orConditions.join(','));
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      if (error.code === 'PGRST205') return [];
+      throw error;
+    }
+    return (data || []) as NotificationItem[];
+  } catch (err: any) {
+    if (err?.code !== 'PGRST205') {
+      console.warn('Fetch client notifications error:', err);
+    }
+    return [];
+  }
+}
+
+/**
+ * Marks all notifications for a Client as read
+ */
+export async function markAllClientNotificationsAsRead(clientId?: string, clientEmpId?: string) {
+  try {
+    let orConditions: string[] = [];
+    if (clientEmpId) orConditions.push(`recipient_user_id.eq.${clientEmpId}`);
+    if (clientId) orConditions.push(`recipient_user_id.eq.${clientId}`);
+    if (clientId) orConditions.push(`reference_id.eq.${clientId}`);
+
+    let query = supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('recipient_role', 'Client')
+      .eq('is_read', false);
+
+    if (orConditions.length > 0) {
+      query = query.or(orConditions.join(','));
+    }
+
+    await query;
+  } catch (err) {
+    console.warn('Mark all client read error:', err);
   }
 }
