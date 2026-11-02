@@ -12,9 +12,21 @@ import {
   SafeAreaView,
   StatusBar,
   Alert,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Send, ArrowLeft, ShieldCheck, User, Sparkles, Paperclip, Camera } from 'lucide-react-native';
+import {
+  Send,
+  ArrowLeft,
+  ShieldCheck,
+  User,
+  Sparkles,
+  Paperclip,
+  Camera,
+  X,
+  FileText,
+  Image as ImageIcon,
+} from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -37,6 +49,7 @@ export default function ClientChatScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [attachModalVisible, setAttachModalVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const fetchMessages = async () => {
@@ -127,21 +140,7 @@ export default function ClientChatScreen({ navigation }: any) {
   };
 
   const promptAttach = () => {
-    Alert.alert('Send Attachment', 'Share photos, drawings or documents with Dayal Team.', [
-      {
-        text: '📸 Take Site Photo',
-        onPress: () => handleAttachFile('camera'),
-      },
-      {
-        text: '🖼️ Choose from Gallery',
-        onPress: () => handleAttachFile('gallery'),
-      },
-      {
-        text: '📄 Choose Document (PDF, DWG)',
-        onPress: () => handleAttachFile('document'),
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    setAttachModalVisible(true);
   };
 
   const handleAttachFile = async (mode: 'camera' | 'gallery' | 'document') => {
@@ -327,6 +326,95 @@ export default function ClientChatScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* ===================== ATTACHMENT ACTION SHEET MODAL ===================== */}
+      <Modal
+        visible={attachModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAttachModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.actionSheetBackdrop}
+          activeOpacity={1}
+          onPress={() => setAttachModalVisible(false)}
+        >
+          <View style={styles.actionSheetCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.actionSheetHeader}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.actionSheetTitle}>Send Attachment</Text>
+                <Text style={styles.actionSheetSub}>
+                  Share photos, architectural drawings or documents with Dayal Team.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.actionSheetCloseBtn}
+                onPress={() => setAttachModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={20} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.actionSheetOptions}>
+              <TouchableOpacity
+                style={styles.actionOptionItem}
+                onPress={() => {
+                  setAttachModalVisible(false);
+                  handleAttachFile('camera');
+                }}
+              >
+                <View style={[styles.actionOptionIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                  <Camera size={20} color="#2563EB" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.actionOptionTitle}>Take Site Photo</Text>
+                  <Text style={styles.actionOptionSub}>Capture site progress with your camera</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionOptionItem}
+                onPress={() => {
+                  setAttachModalVisible(false);
+                  handleAttachFile('gallery');
+                }}
+              >
+                <View style={[styles.actionOptionIconWrap, { backgroundColor: '#FDF4FF' }]}>
+                  <ImageIcon size={20} color="#C026D3" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.actionOptionTitle}>Choose from Gallery</Text>
+                  <Text style={styles.actionOptionSub}>Pick photos from your device albums</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionOptionItem}
+                onPress={() => {
+                  setAttachModalVisible(false);
+                  handleAttachFile('document');
+                }}
+              >
+                <View style={[styles.actionOptionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                  <FileText size={20} color="#D97706" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.actionOptionTitle}>Choose Document</Text>
+                  <Text style={styles.actionOptionSub}>Upload PDF, CAD drawings (DWG/DXF), docs</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.actionSheetCancelBtn}
+              onPress={() => setAttachModalVisible(false)}
+            >
+              <Text style={styles.actionSheetCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -530,5 +618,90 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: '#93C5FD',
+  },
+  actionSheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'flex-end',
+  },
+  actionSheetCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  actionSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  actionSheetTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  actionSheetSub: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  actionSheetCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionSheetOptions: {
+    marginVertical: 14,
+    gap: 10,
+  },
+  actionOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  actionOptionIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionOptionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  actionOptionSub: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  actionSheetCancelBtn: {
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  actionSheetCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
   },
 });

@@ -30,6 +30,9 @@ import {
   MessageCircle,
   Copy,
   Paperclip,
+  X,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
@@ -113,6 +116,20 @@ export default function ClientHubScreen({ navigation, route }: any) {
   const [sendingChat, setSendingChat] = useState(false);
   const [uploadingMilestoneId, setUploadingMilestoneId] = useState<number | null>(null);
   const [uploadingChat, setUploadingChat] = useState(false);
+
+  // Custom Bottom Sheet Action Picker for Attachments
+  const [attachPickerModal, setAttachPickerModal] = useState<{
+    visible: boolean;
+    milestoneId?: number;
+    target: 'milestone' | 'chat';
+    title: string;
+    subtitle: string;
+  }>({
+    visible: false,
+    target: 'milestone',
+    title: '',
+    subtitle: '',
+  });
 
   const fetchMilestonesAndChat = async () => {
     if (!clientId) return;
@@ -346,25 +363,13 @@ export default function ClientHubScreen({ navigation, route }: any) {
 
   // Staff attaches file / photo to a client milestone
   const promptStaffUploadFile = (milestoneId: number) => {
-    Alert.alert(
-      'Attach File to Milestone',
-      'Upload drawings, CAD files, site photos or blueprints to Cloudflare R2.',
-      [
-        {
-          text: '📸 Take Site Photo',
-          onPress: () => handleStaffUploadFile(milestoneId, 'camera'),
-        },
-        {
-          text: '🖼️ Choose from Gallery',
-          onPress: () => handleStaffUploadFile(milestoneId, 'gallery'),
-        },
-        {
-          text: '📄 Choose Document (PDF, DWG)',
-          onPress: () => handleStaffUploadFile(milestoneId, 'document'),
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    setAttachPickerModal({
+      visible: true,
+      milestoneId,
+      target: 'milestone',
+      title: 'Attach File to Milestone',
+      subtitle: 'Upload site drawings, CAD files, photos or blueprints to Cloudflare R2.',
+    });
   };
 
   const handleStaffUploadFile = async (milestoneId: number, mode: 'camera' | 'gallery' | 'document') => {
@@ -453,21 +458,12 @@ export default function ClientHubScreen({ navigation, route }: any) {
 
   // Staff sends file attachment in chat
   const promptStaffAttachChat = () => {
-    Alert.alert('Send Attachment to Client', 'Send a drawing, site photo, or document in chat.', [
-      {
-        text: '📸 Take Site Photo',
-        onPress: () => handleStaffAttachChat('camera'),
-      },
-      {
-        text: '🖼️ Choose from Gallery',
-        onPress: () => handleStaffAttachChat('gallery'),
-      },
-      {
-        text: '📄 Choose Document (PDF, DWG)',
-        onPress: () => handleStaffAttachChat('document'),
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    setAttachPickerModal({
+      visible: true,
+      target: 'chat',
+      title: 'Send Attachment to Client',
+      subtitle: 'Share site photos, drawings or documents with client in chat.',
+    });
   };
 
   const handleStaffAttachChat = async (mode: 'camera' | 'gallery' | 'document') => {
@@ -926,6 +922,113 @@ export default function ClientHubScreen({ navigation, route }: any) {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* ===================== ATTACHMENT ACTION SHEET MODAL ===================== */}
+      <Modal
+        visible={attachPickerModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAttachPickerModal(prev => ({ ...prev, visible: false }))}
+      >
+        <TouchableOpacity
+          style={styles.actionSheetBackdrop}
+          activeOpacity={1}
+          onPress={() => setAttachPickerModal(prev => ({ ...prev, visible: false }))}
+        >
+          <View style={styles.actionSheetCard} onStartShouldSetResponder={() => true}>
+            {/* Header with Title and Close Button */}
+            <View style={styles.actionSheetHeader}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.actionSheetTitle}>{attachPickerModal.title}</Text>
+                <Text style={styles.actionSheetSub}>{attachPickerModal.subtitle}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.actionSheetCloseBtn}
+                onPress={() => setAttachPickerModal(prev => ({ ...prev, visible: false }))}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={20} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Options */}
+            <View style={styles.actionSheetOptions}>
+              <TouchableOpacity
+                style={styles.actionOptionItem}
+                onPress={() => {
+                  const mId = attachPickerModal.milestoneId;
+                  const target = attachPickerModal.target;
+                  setAttachPickerModal(prev => ({ ...prev, visible: false }));
+                  if (target === 'milestone' && mId) {
+                    handleStaffUploadFile(mId, 'camera');
+                  } else {
+                    handleStaffAttachChat('camera');
+                  }
+                }}
+              >
+                <View style={[styles.actionOptionIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                  <Camera size={20} color="#2563EB" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.actionOptionTitle}>Take Site Photo</Text>
+                  <Text style={styles.actionOptionSub}>Capture site progress with your camera</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionOptionItem}
+                onPress={() => {
+                  const mId = attachPickerModal.milestoneId;
+                  const target = attachPickerModal.target;
+                  setAttachPickerModal(prev => ({ ...prev, visible: false }));
+                  if (target === 'milestone' && mId) {
+                    handleStaffUploadFile(mId, 'gallery');
+                  } else {
+                    handleStaffAttachChat('gallery');
+                  }
+                }}
+              >
+                <View style={[styles.actionOptionIconWrap, { backgroundColor: '#FDF4FF' }]}>
+                  <ImageIcon size={20} color="#C026D3" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.actionOptionTitle}>Choose from Gallery</Text>
+                  <Text style={styles.actionOptionSub}>Pick photos from your device albums</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionOptionItem}
+                onPress={() => {
+                  const mId = attachPickerModal.milestoneId;
+                  const target = attachPickerModal.target;
+                  setAttachPickerModal(prev => ({ ...prev, visible: false }));
+                  if (target === 'milestone' && mId) {
+                    handleStaffUploadFile(mId, 'document');
+                  } else {
+                    handleStaffAttachChat('document');
+                  }
+                }}
+              >
+                <View style={[styles.actionOptionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                  <FileText size={20} color="#D97706" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.actionOptionTitle}>Choose Document</Text>
+                  <Text style={styles.actionOptionSub}>Upload PDF, CAD drawings (DWG/DXF), docs</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.actionSheetCancelBtn}
+              onPress={() => setAttachPickerModal(prev => ({ ...prev, visible: false }))}
+            >
+              <Text style={styles.actionSheetCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -1429,5 +1532,90 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  actionSheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'flex-end',
+  },
+  actionSheetCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  actionSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  actionSheetTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  actionSheetSub: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  actionSheetCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionSheetOptions: {
+    marginVertical: 14,
+    gap: 10,
+  },
+  actionOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  actionOptionIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionOptionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  actionOptionSub: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  actionSheetCancelBtn: {
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  actionSheetCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
   },
 });
