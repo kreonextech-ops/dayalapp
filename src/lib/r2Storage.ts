@@ -1,5 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { AwsClient } from 'aws4fetch';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Linking, Alert } from 'react-native';
@@ -14,13 +13,14 @@ const R2_SECRET_KEY =
   '35d26691b60485bc3a9cbfc3d0ab95aee4b0ed9bfe44e6ad2fb7e1c9aa70b560';
 const BUCKET_NAME = process.env.EXPO_PUBLIC_R2_BUCKET_NAME || 'dayal-crm-docs';
 
-export const s3 = new S3Client({
+const endpointHost = R2_ENDPOINT.replace(/^https?:\/\//, '');
+const BUCKET_URL = `https://${BUCKET_NAME}.${endpointHost}`;
+
+export const aws = new AwsClient({
+  accessKeyId: R2_ACCESS_KEY,
+  secretAccessKey: R2_SECRET_KEY,
+  service: 's3',
   region: 'auto',
-  endpoint: R2_ENDPOINT,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY,
-    secretAccessKey: R2_SECRET_KEY,
-  },
 });
 
 function getMimeType(fileName: string): string {
@@ -64,22 +64,14 @@ export async function uploadUriToR2(
   const sanitizedName = rawName.replace(/[^a-zA-Z0-9.-]/g, '_');
   const fileKey = `${folder}/${Date.now()}-${sanitizedName}`;
   const resolvedMime = mimeType || getMimeType(rawName);
+  const targetUrl = `${BUCKET_URL}/${fileKey}`;
 
-  // 1. Fetch file as binary blob
+  // 1. Fetch file as binary blob from local URI
   const fileResponse = await fetch(fileUri);
   const blob = await fileResponse.blob();
 
-  // 2. Generate presigned PUT URL
-  const putCommand = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: fileKey,
-    ContentType: resolvedMime,
-  });
-
-  const uploadUrl = await getSignedUrl(s3, putCommand, { expiresIn: 900 });
-
-  // 3. PUT binary directly into Cloudflare R2
-  const uploadResponse = await fetch(uploadUrl, {
+  // 2. Direct AWS SigV4 signed upload to Cloudflare R2
+  const uploadResponse = await aws.fetch(targetUrl, {
     method: 'PUT',
     headers: {
       'Content-Type': resolvedMime,
@@ -91,7 +83,7 @@ export async function uploadUriToR2(
     throw new Error(`R2 upload failed with status ${uploadResponse.status}`);
   }
 
-  // 4. Generate viewable signed GET URL (valid for 2 hours)
+  // 3. Generate viewable signed GET URL
   const signedViewUrl = await getR2FileUrl(fileKey);
 
   return {
@@ -102,7 +94,7 @@ export async function uploadUriToR2(
 }
 
 /**
- * Generates a presigned GET URL for viewing or downloading any R2 file
+ * Generates an AWS SigV4 presigned GET URL for viewing or downloading any R2 file
  */
 export async function getR2FileUrl(key: string): Promise<string> {
   if (!key) return '';
@@ -110,12 +102,13 @@ export async function getR2FileUrl(key: string): Promise<string> {
     return key;
   }
 
-  const getCommand = new GetObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: key,
+  const targetUrl = `${BUCKET_URL}/${key}`;
+  const signed = await aws.sign(targetUrl, {
+    method: 'GET',
+    aws: { signQuery: true },
   });
 
-  return await getSignedUrl(s3, getCommand, { expiresIn: 7200 }); // 2 hours
+  return signed.url;
 }
 
 /**
@@ -144,11 +137,10 @@ export async function openR2FileInBrowser(keyOrUrl: string) {
 export async function deleteR2File(key: string): Promise<void> {
   if (!key || key.startsWith('http')) return;
   try {
-    const command = new DeleteObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
+    const targetUrl = `${BUCKET_URL}/${key}`;
+    await aws.fetch(targetUrl, {
+      method: 'DELETE',
     });
-    await s3.send(command);
   } catch (err) {
     console.warn('Failed to delete file from R2:', err);
   }
