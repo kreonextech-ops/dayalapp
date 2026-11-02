@@ -9,7 +9,7 @@
     "@react-navigation/native": "^7.5.0",
     "@react-navigation/native-stack": "^7.20.0",
     "@supabase/supabase-js": "^2.117.3",
-    "aws4fetch": "^1.0.20",
+    "crypto-js": "^4.2.0",
     "expo": "^58.0.0",
     "expo-device": "~58.0.5",
     "expo-document-picker": "~58.0.4",
@@ -25,6 +25,7 @@
     "react-native-url-polyfill": "^4.0.0"
   },
   "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
     "@types/react": "~19.3.0",
     "typescript": "~6.0.3"
   },
