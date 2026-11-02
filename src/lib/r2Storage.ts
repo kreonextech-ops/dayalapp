@@ -1,6 +1,7 @@
 import CryptoJS from 'crypto-js';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Linking, Alert } from 'react-native';
 
 const R2_ENDPOINT =
@@ -130,31 +131,27 @@ export async function uploadUriToR2(
   const fileKey = `${folder}/${Date.now()}-${sanitizedName}`;
   const resolvedMime = mimeType || getMimeType(rawName);
 
-  // 1. Fetch file as binary blob from local device URI
-  const fileResponse = await fetch(fileUri);
-  const blob = await fileResponse.blob();
-
-  // 2. Generate presigned PUT URL using pure JS SigV4
+  // 1. Generate presigned PUT URL using pure JS SigV4
   const uploadUrl = signR2Url({
     method: 'PUT',
     key: fileKey,
     expiresIn: 3600, // 1 hour
   });
 
-  // 3. Direct upload binary to Cloudflare R2
-  const uploadResponse = await fetch(uploadUrl, {
-    method: 'PUT',
+  // 2. Stream binary file directly from device storage to Cloudflare R2
+  const uploadResponse = await FileSystem.uploadAsync(uploadUrl, fileUri, {
+    httpMethod: 'PUT',
+    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
     headers: {
       'Content-Type': resolvedMime,
     },
-    body: blob,
   });
 
-  if (!uploadResponse.ok) {
+  if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
     throw new Error(`R2 upload failed with status ${uploadResponse.status}`);
   }
 
-  // 4. Generate viewable signed GET URL (valid for 24 hours)
+  // 3. Generate viewable signed GET URL (valid for 24 hours)
   const signedViewUrl = getR2FileUrl(fileKey);
 
   return {

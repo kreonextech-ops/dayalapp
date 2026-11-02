@@ -7,9 +7,11 @@ import {
   ActivityIndicator,
   StyleSheet,
   Linking,
-  Alert,
+  Modal,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
-import { FileText, ExternalLink, Image as ImageIcon, Trash2 } from 'lucide-react-native';
+import { FileText, ExternalLink, Image as ImageIcon, Trash2, X } from 'lucide-react-native';
 import { getR2FileUrl, openR2FileInBrowser } from '../lib/r2Storage';
 import { Colors } from '../constants/Colors';
 
@@ -37,6 +39,7 @@ export default function R2ImageThumbnail({
   const [signedUrl, setSignedUrl] = useState<string | null>(directUrl || null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [previewVisible, setPreviewVisible] = useState(false);
 
   const effectiveKey = fileKey || directUrl || '';
   const isImage = /\.(jpeg|jpg|png|webp|gif)$/i.test(fileName || effectiveKey);
@@ -78,6 +81,14 @@ export default function R2ImageThumbnail({
   }, [effectiveKey]);
 
   const handlePress = async () => {
+    if (isImage) {
+      setPreviewVisible(true);
+    } else {
+      openR2FileInBrowser(effectiveKey);
+    }
+  };
+
+  const openExternal = async () => {
     if (signedUrl) {
       try {
         await Linking.openURL(signedUrl);
@@ -135,6 +146,58 @@ export default function R2ImageThumbnail({
             <Trash2 size={13} color="#EF4444" />
           </TouchableOpacity>
         )}
+
+        {/* Full Screen In-App Image Viewer Modal */}
+        <Modal
+          visible={previewVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPreviewVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <SafeAreaView style={styles.modalSafeArea}>
+              <View style={styles.modalHeader}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={styles.modalFileName} numberOfLines={1}>
+                    {fileName}
+                  </Text>
+                  {author && (
+                    <Text style={styles.modalAuthor}>
+                      Uploaded by {author}
+                      {timestamp ? ` • ${new Date(timestamp).toLocaleDateString('en-IN')}` : ''}
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  onPress={() => setPreviewVisible(false)}
+                  style={styles.modalCloseBtn}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <X size={22} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalImageContainer}>
+                {signedUrl ? (
+                  <Image
+                    source={{ uri: signedUrl }}
+                    style={styles.fullImage}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <ActivityIndicator size="large" color="#FFFFFF" />
+                )}
+              </View>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity style={styles.openExternalBtn} onPress={openExternal}>
+                  <ExternalLink size={16} color="#FFFFFF" />
+                  <Text style={styles.openExternalText}>Open in Browser / Download</Text>
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -291,5 +354,67 @@ const styles = StyleSheet.create({
   docDeleteBtn: {
     padding: 6,
     marginLeft: 6,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+  },
+  modalSafeArea: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modalFileName: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  modalAuthor: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalImageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 10,
+  },
+  fullImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modalFooter: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  openExternalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 8,
+  },
+  openExternalText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
