@@ -181,7 +181,7 @@ export default function HomeScreen({ navigation }: any) {
           />
           <View>
             <Text style={styles.brandTitle}>Dayal Constructions & Co.</Text>
-            <Text style={styles.brandTagline}>BUILDING TRUST, SHAPING TOMORROW</Text>
+            <Text style={styles.brandTagline}>BORN TO BUILD</Text>
           </View>
         </View>
 

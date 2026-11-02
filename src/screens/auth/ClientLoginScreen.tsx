@@ -50,7 +50,7 @@ export default function ClientLoginScreen({ navigation }: any) {
         <View style={styles.content}>
           <View style={styles.logoContainer}>
             <Text style={styles.logoText}>Dayal Constructions & Co.</Text>
-            <Text style={styles.tagline}>BUILDING TRUST, SHAPING TOMORROW</Text>
+            <Text style={styles.tagline}>BORN TO BUILD</Text>
           </View>
 
           <Text style={styles.title}>Client Portal Login</Text>
@@ -124,8 +124,8 @@ export default function ClientLoginScreen({ navigation }: any) {
           </View>
           
           <View style={styles.footerContainer}>
-             <Text style={styles.footerTextPrimary}>Your Dream</Text>
-             <Text style={styles.footerTextSecondary}>Our Commitment</Text>
+             <Text style={styles.footerTextPrimary}>Dayal Constructions & Co.</Text>
+             <Text style={styles.footerTextSecondary}>BORN TO BUILD</Text>
           </View>
         </View>
       </KeyboardAvoidingView>

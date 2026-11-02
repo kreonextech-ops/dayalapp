@@ -33,7 +33,7 @@ export default function LoginSelectionScreen({ navigation }: any) {
             />
             <View>
               <Text style={styles.logoText}>Dayal Constructions & Co.</Text>
-              <Text style={styles.tagline}>BUILDING TRUST, SHAPING TOMORROW</Text>
+              <Text style={styles.tagline}>BORN TO BUILD</Text>
             </View>
           </View>
           

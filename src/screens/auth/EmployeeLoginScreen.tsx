@@ -47,7 +47,7 @@ export default function EmployeeLoginScreen({ navigation }: any) {
           <View style={styles.logoContainer}>
             {/* Logo placeholder */}
             <Text style={styles.logoText}>Dayal Constructions & Co.</Text>
-            <Text style={styles.tagline}>BUILDING TRUST, SHAPING TOMORROW</Text>
+            <Text style={styles.tagline}>BORN TO BUILD</Text>
           </View>
 
           <Text style={styles.title}>Employee Login</Text>
