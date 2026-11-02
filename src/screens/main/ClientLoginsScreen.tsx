@@ -26,6 +26,8 @@ import {
   X,
   ShieldCheck,
   ChevronRight,
+  Search,
+  Phone,
 } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
@@ -41,6 +43,12 @@ export default function ClientLoginsScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Search states
+  const [tableSearch, setTableSearch] = useState('');
+  const [modalSearch, setModalSearch] = useState('');
+  const [selectedClientRecord, setSelectedClientRecord] = useState<any>(null);
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+
   // New Client Login Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState('');
@@ -55,7 +63,7 @@ export default function ClientLoginsScreen({ navigation }: any) {
   const fetchData = async () => {
     try {
       const [clientsRes, loginsRes] = await Promise.all([
-        supabase.from('clients').select('id, name').order('name', { ascending: true }),
+        supabase.from('clients').select('*').order('name', { ascending: true }),
         supabase
           .from('employees')
           .select('*')
@@ -72,6 +80,29 @@ export default function ClientLoginsScreen({ navigation }: any) {
       setRefreshing(false);
     }
   };
+
+  // Filter logins for main screen search
+  const filteredLogins = logins.filter(login => {
+    if (!tableSearch.trim()) return true;
+    const term = tableSearch.toLowerCase().trim();
+    const linkedClient = clients.find(c => String(c.id) === String(login.department));
+    const nameMatch = (linkedClient?.name || login.name || '').toLowerCase().includes(term);
+    const emailMatch = (login.email || '').toLowerCase().includes(term);
+    const phoneMatch = (linkedClient?.phone || '').includes(term);
+    const idMatch = `CLIENT-${login.department?.toString().substring(0, 4)}`.toLowerCase().includes(term);
+    return nameMatch || emailMatch || phoneMatch || idMatch;
+  });
+
+  // Filter clients for modal search picker
+  const filteredModalClients = clients.filter(c => {
+    if (!modalSearch.trim()) return true;
+    const term = modalSearch.toLowerCase().trim();
+    return (
+      (c.name || '').toLowerCase().includes(term) ||
+      (c.phone || '').includes(term) ||
+      (c.email || '').toLowerCase().includes(term)
+    );
+  });
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -111,6 +142,9 @@ export default function ClientLoginsScreen({ navigation }: any) {
         setLogins(prev => [data[0], ...prev]);
         setIsModalOpen(false);
         setSelectedClientId('');
+        setSelectedClientRecord(null);
+        setModalSearch('');
+        setShowClientDropdown(false);
         setLoginEmail('');
         setLoginPassword('');
         Alert.alert('Success', 'Client portal credentials generated.');
@@ -157,10 +191,39 @@ export default function ClientLoginsScreen({ navigation }: any) {
           <Text style={styles.topBarTitle}>Client Portal Logins</Text>
           <Text style={styles.topBarSub}>Manage client credentials & portal access</Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setIsModalOpen(true)}>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => {
+            setIsModalOpen(true);
+            setSelectedClientId('');
+            setSelectedClientRecord(null);
+            setModalSearch('');
+            setShowClientDropdown(false);
+          }}
+        >
           <Plus size={16} color="#FFFFFF" />
           <Text style={styles.addBtnText}>New Login</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Main Search Bar */}
+      <View style={styles.searchBarContainer}>
+        <View style={styles.searchBox}>
+          <Search size={18} color={Colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by client, phone, or login ID..."
+            placeholderTextColor={Colors.textMuted}
+            value={tableSearch}
+            onChangeText={setTableSearch}
+            autoCapitalize="none"
+          />
+          {tableSearch.length > 0 && (
+            <TouchableOpacity onPress={() => setTableSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <X size={16} color={Colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {loading ? (
@@ -170,52 +233,68 @@ export default function ClientLoginsScreen({ navigation }: any) {
         </View>
       ) : (
         <FlatList
-          data={logins}
+          data={filteredLogins}
           keyExtractor={item => item.id.toString()}
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={styles.card}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('ClientHub', { clientLogin: item })}
-            >
-              <View style={styles.cardLeft}>
-                <View style={styles.keyCircle}>
-                  <Key size={18} color={Colors.primaryDark} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.clientName}>{item.name}</Text>
-                  <View style={styles.metaRow}>
-                    <Mail size={12} color={Colors.textMuted} />
-                    <Text style={styles.emailText}>{item.email}</Text>
-                  </View>
-                  <View style={styles.portalBadge}>
-                    <ShieldCheck size={11} color="#059669" />
-                    <Text style={styles.portalBadgeText}>Client Portal • Tap to Manage</Text>
-                  </View>
-                </View>
-              </View>
+          renderItem={({ item }) => {
+            const linkedClient = clients.find(c => String(c.id) === String(item.department));
+            const displayName = linkedClient?.name || item.name;
+            const clientCode = `CLIENT-${item.department?.toString().substring(0, 4)?.toUpperCase() || 'NEW'}`;
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <TouchableOpacity 
-                  style={styles.deleteBtn} 
-                  onPress={(e) => {
-                    handleDeleteLogin(item);
-                  }}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Trash2 size={18} color={Colors.danger} />
-                </TouchableOpacity>
-                <ChevronRight size={18} color={Colors.textMuted} />
-              </View>
-            </TouchableOpacity>
-          )}
+            return (
+              <TouchableOpacity 
+                style={styles.card}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('ClientHub', { clientLogin: item })}
+              >
+                <View style={styles.cardLeft}>
+                  <View style={styles.keyCircle}>
+                    <Key size={18} color={Colors.primaryDark} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.clientName}>{displayName}</Text>
+                    <View style={styles.metaRow}>
+                      <Mail size={12} color={Colors.textMuted} />
+                      <Text style={styles.emailText}>{item.email}</Text>
+                    </View>
+                    {linkedClient?.phone && (
+                      <View style={[styles.metaRow, { marginTop: 2 }]}>
+                        <Phone size={12} color={Colors.textMuted} />
+                        <Text style={styles.emailText}>{linkedClient.phone} • {clientCode}</Text>
+                      </View>
+                    )}
+                    <View style={styles.portalBadge}>
+                      <ShieldCheck size={11} color="#059669" />
+                      <Text style={styles.portalBadgeText}>Client Portal • Tap to Manage</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TouchableOpacity 
+                    style={styles.deleteBtn} 
+                    onPress={(e) => {
+                      handleDeleteLogin(item);
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Trash2 size={18} color={Colors.danger} />
+                  </TouchableOpacity>
+                  <ChevronRight size={18} color={Colors.textMuted} />
+                </View>
+              </TouchableOpacity>
+            );
+          }}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Lock size={40} color={Colors.textMuted} />
-              <Text style={styles.emptyTitle}>No client portal logins yet</Text>
-              <Text style={styles.emptySub}>Grant clients access to monitor projects & drawings.</Text>
+              <Text style={styles.emptyTitle}>
+                {tableSearch ? `No client logins matching "${tableSearch}"` : 'No client portal logins yet'}
+              </Text>
+              <Text style={styles.emptySub}>
+                {tableSearch ? 'Try a different client name, phone number, or login ID.' : 'Grant clients access to monitor projects & drawings.'}
+              </Text>
             </View>
           }
         />
@@ -227,42 +306,113 @@ export default function ClientLoginsScreen({ navigation }: any) {
           <View style={styles.modalBox}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Issue Client Portal Login</Text>
-              <TouchableOpacity onPress={() => setIsModalOpen(false)}>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsModalOpen(false);
+                  setShowClientDropdown(false);
+                }}
+              >
                 <X size={20} color={Colors.text} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.inputLabel}>Select Client *</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-                {clients.map(c => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[
-                      styles.clientChip,
-                      selectedClientId === c.id && styles.clientChipActive,
-                    ]}
-                    onPress={() => setSelectedClientId(c.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.clientChipText,
-                        selectedClientId === c.id && styles.clientChipTextActive,
-                      ]}
-                    >
-                      {c.name}
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={styles.inputLabel}>Link to Client Record *</Text>
+              
+              {/* Searchable Client Picker */}
+              {selectedClientRecord ? (
+                <View style={styles.selectedClientCard}>
+                  <View style={styles.selectedClientIcon}>
+                    <User size={18} color="#2563EB" />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.selectedClientName}>{selectedClientRecord.name}</Text>
+                    <Text style={styles.selectedClientSub}>
+                      {selectedClientRecord.phone || 'No phone'}
+                      {selectedClientRecord.email ? ` • ${selectedClientRecord.email}` : ''}
                     </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.clearSelectedBtn}
+                    onPress={() => {
+                      setSelectedClientRecord(null);
+                      setSelectedClientId('');
+                      setModalSearch('');
+                      setShowClientDropdown(false);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <X size={16} color={Colors.textMuted} />
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
+                </View>
+              ) : (
+                <View style={styles.modalSearchWrapper}>
+                  <View style={styles.modalSearchBox}>
+                    <Search size={16} color={Colors.textMuted} />
+                    <TextInput
+                      style={styles.modalSearchInput}
+                      placeholder="Type client name or phone to search..."
+                      placeholderTextColor={Colors.textMuted}
+                      value={modalSearch}
+                      onChangeText={val => {
+                        setModalSearch(val);
+                        setShowClientDropdown(true);
+                      }}
+                      onFocus={() => setShowClientDropdown(true)}
+                      autoCapitalize="none"
+                    />
+                    {modalSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setModalSearch('')}>
+                        <X size={14} color={Colors.textMuted} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
 
-              <Text style={styles.inputLabel}>Portal Login Email *</Text>
+                  {showClientDropdown && (
+                    <View style={styles.dropdownContainer}>
+                      {filteredModalClients.length > 0 ? (
+                        <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                          {filteredModalClients.slice(0, 15).map(c => (
+                            <TouchableOpacity
+                              key={c.id}
+                              style={styles.dropdownItem}
+                              onPress={() => {
+                                setSelectedClientRecord(c);
+                                setSelectedClientId(c.id);
+                                const defaultUsername = c.phone || c.email?.split('@')[0] || c.name.toLowerCase().replace(/\s+/g, '');
+                                if (!loginEmail) {
+                                  setLoginEmail(defaultUsername);
+                                }
+                                setShowClientDropdown(false);
+                                setModalSearch('');
+                              }}
+                            >
+                              <Text style={styles.dropdownClientName}>{c.name}</Text>
+                              <Text style={styles.dropdownClientSub}>
+                                {c.phone || 'No phone'}{c.email ? ` • ${c.email}` : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      ) : (
+                        <View style={styles.dropdownEmpty}>
+                          <Text style={styles.dropdownEmptyText}>
+                            No clients matching "{modalSearch}"
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <Text style={[styles.inputLabel, { marginTop: 14 }]}>Portal Login ID (Username / Email / Phone) *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="client@gmail.com"
+                placeholder="e.g. client phone or email"
+                placeholderTextColor={Colors.textMuted}
                 value={loginEmail}
                 onChangeText={setLoginEmail}
-                keyboardType="email-address"
                 autoCapitalize="none"
               />
 
@@ -270,13 +420,20 @@ export default function ClientLoginsScreen({ navigation }: any) {
               <TextInput
                 style={styles.input}
                 placeholder="Temporary Password"
+                placeholderTextColor={Colors.textMuted}
                 value={loginPassword}
                 onChangeText={setLoginPassword}
                 secureTextEntry
               />
 
               <View style={styles.btnRow}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsModalOpen(false)}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => {
+                    setIsModalOpen(false);
+                    setShowClientDropdown(false);
+                  }}
+                >
                   <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -416,6 +573,117 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelText: { color: Colors.text, fontWeight: '600' },
+  searchBarContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: Platform.OS === 'ios' ? 8 : 4,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.text,
+    paddingVertical: 4,
+  },
+  selectedClientCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: '#93C5FD',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 4,
+  },
+  selectedClientIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DBEAFE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedClientName: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#1E3A8A',
+  },
+  selectedClientSub: {
+    fontSize: 11,
+    color: '#3B82F6',
+    marginTop: 1,
+  },
+  clearSelectedBtn: {
+    padding: 6,
+  },
+  modalSearchWrapper: {
+    marginTop: 4,
+    position: 'relative',
+    zIndex: 10,
+  },
+  modalSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: Platform.OS === 'ios' ? 8 : 4,
+    gap: 8,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.text,
+    paddingVertical: 4,
+  },
+  dropdownContainer: {
+    marginTop: 4,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+    maxHeight: 180,
+  },
+  dropdownItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  dropdownClientName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  dropdownClientSub: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  dropdownEmpty: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  dropdownEmptyText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
   saveBtn: {
     flex: 1,
     backgroundColor: Colors.primaryDark,
