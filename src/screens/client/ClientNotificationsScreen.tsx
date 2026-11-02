@@ -29,6 +29,7 @@ import {
   fetchClientNotifications,
   markNotificationAsRead,
   markAllClientNotificationsAsRead,
+  startRealtimeNotificationListener,
   NotificationItem,
 } from '../../lib/notificationService';
 
@@ -57,7 +58,13 @@ export default function ClientNotificationsScreen({ navigation }: any) {
 
   useEffect(() => {
     loadNotifications();
-  }, [clientId]);
+    const unsubscribe = startRealtimeNotificationListener('Client', user?.id, clientId, () => {
+      loadNotifications();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [clientId, user?.id]);
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -86,22 +86,29 @@ export async function setupSystemNotifications(): Promise<boolean> {
 }
 
 /**
- * Saves or updates the device push token in the employee's record.
- * STRICTURE: Clients are NEVER registered for push notifications.
+ * Saves or updates the device push token in the user's record (inside permissions JSONB).
+ * Supports Admin, Employees, and Clients so each device can receive push notifications.
  */
 export async function syncUserPushToken(userId: string, userRole?: string) {
-  if (!userId || userRole === 'Client') return;
+  if (!userId) return;
   try {
     const token = await registerForPushNotificationsAsync();
     if (token) {
-      // Update push_token strictly in employees table (NEVER clients)
-      await supabase
+      const { data: emp } = await supabase
         .from('employees')
-        .update({ push_token: token })
-        .eq('id', userId);
+        .select('permissions')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const currentPerms = emp?.permissions || {};
+      if (currentPerms.push_token !== token) {
+        await supabase
+          .from('employees')
+          .update({ permissions: { ...currentPerms, push_token: token } })
+          .eq('id', userId);
+      }
     }
   } catch (err) {
-    // Non-fatal if push_token column is not yet migrated in database
     console.log('Sync push token skipped:', err);
   }
 }
@@ -203,7 +210,7 @@ export async function createNotification({
 }: {
   title: string;
   message: string;
-  module?: 'lead' | 'client' | 'project' | 'service' | 'task' | 'communication' | 'followup' | 'general';
+  module?: 'lead' | 'client' | 'project' | 'service' | 'task' | 'communication' | 'followup' | 'general' | 'chat';
   referenceId?: string;
   recipientRole?: 'Admin' | 'Employee' | 'All_Staff';
   recipientUserId?: string;
@@ -231,19 +238,19 @@ export async function createNotification({
       data: { module, referenceId },
     });
 
-    // 3. Dispatch Remote Push to recipient devices (STRICTLY Staff & Admin, NEVER Clients)
+    // 3. Dispatch Remote Push to recipient devices
     const targetTokens = new Set<string>();
 
     // A. Always notify Admins so Admin gets 100% of all CRM events
     const { data: adminList } = await supabase
       .from('employees')
-      .select('push_token')
-      .ilike('role', '%admin%')
-      .not('push_token', 'is', null);
+      .select('permissions')
+      .ilike('role', '%admin%');
 
     if (adminList) {
       for (const admin of adminList) {
-        if (admin.push_token) targetTokens.add(admin.push_token);
+        const tok = admin.permissions?.push_token;
+        if (tok) targetTokens.add(tok);
       }
     }
 
@@ -251,28 +258,28 @@ export async function createNotification({
     if (recipientUserId) {
       const { data: recipientEmp } = await supabase
         .from('employees')
-        .select('push_token')
+        .select('permissions')
         .eq('id', recipientUserId)
         .maybeSingle();
 
-      if (recipientEmp?.push_token) {
-        targetTokens.add(recipientEmp.push_token);
-      }
+      const tok = recipientEmp?.permissions?.push_token;
+      if (tok) targetTokens.add(tok);
     } else if (recipientRole === 'All_Staff') {
-      // Broad push to all staff
+      // Broad push to all staff (excluding Client accounts)
       const { data: staffList } = await supabase
         .from('employees')
-        .select('push_token')
-        .not('push_token', 'is', null);
+        .select('permissions')
+        .neq('role', 'Client');
 
       if (staffList) {
         for (const staff of staffList) {
-          if (staff.push_token) targetTokens.add(staff.push_token);
+          const tok = staff.permissions?.push_token;
+          if (tok) targetTokens.add(tok);
         }
       }
     }
 
-    // C. Dispatch to all identified staff/admin tokens (NEVER clients)
+    // C. Dispatch to all identified staff/admin tokens
     for (const token of targetTokens) {
       await sendRemotePushNotification({
         toToken: token,
@@ -288,20 +295,25 @@ export async function createNotification({
 
 /**
  * Real-time listener on Supabase notifications table
- * GUARANTEE: Clients receive 0 notifications. Admins receive 100% of all notifications.
+ * Admin receives 100% of all notifications.
+ * Employees receive assigned/All_Staff notifications.
+ * Clients receive ONLY notifications targeted to their client record.
  */
 export function startRealtimeNotificationListener(
   userRole: string,
   userId?: string,
-  onNotificationReceived?: (notification: NotificationItem) => void
+  clientIdOrCallback?: string | ((notification: NotificationItem) => void),
+  callback?: (notification: NotificationItem) => void
 ) {
-  // STRICT RULE: Clients NEVER receive any notifications
-  if (userRole === 'Client') return () => {};
+  const clientId = typeof clientIdOrCallback === 'string' ? clientIdOrCallback : undefined;
+  const onNotificationReceived =
+    typeof clientIdOrCallback === 'function' ? clientIdOrCallback : callback;
 
   const isAdmin = userRole === 'Admin';
+  const isClient = userRole === 'Client';
 
   const channel = supabase
-    .channel('realtime_device_notifications')
+    .channel(`realtime_device_notifs_${userId || 'guest'}`)
     .on(
       'postgres_changes',
       {
@@ -313,7 +325,30 @@ export function startRealtimeNotificationListener(
         const newNotif = payload.new as NotificationItem;
         if (!newNotif) return;
 
-        // Admin receives ALL notifications; employees receive All_Staff or their assigned ones
+        if (isClient) {
+          // Client ONLY receives notifications explicitly for their project/chat
+          const isForThisClient =
+            newNotif.recipient_role === 'Client' &&
+            (newNotif.recipient_user_id === userId ||
+              newNotif.recipient_user_id === clientId ||
+              newNotif.reference_id === clientId);
+
+          if (isForThisClient) {
+            await triggerDevicePushNotification({
+              title: newNotif.title,
+              body: newNotif.message,
+              data: { module: newNotif.module, referenceId: newNotif.reference_id },
+            });
+            if (onNotificationReceived) onNotificationReceived(newNotif);
+          }
+          return;
+        }
+
+        // Staff does NOT see other clients' private notifications unless Admin
+        if (newNotif.recipient_role === 'Client' && !isAdmin) {
+          return;
+        }
+
         const roleMatches =
           isAdmin ||
           newNotif.recipient_role === 'All_Staff' ||
@@ -457,10 +492,21 @@ export async function createClientNotification({
     if (clientEmpId) {
       const { data: empRecord } = await supabase
         .from('employees')
-        .select('push_token')
+        .select('permissions')
         .eq('id', clientEmpId)
         .maybeSingle();
-      targetPushToken = empRecord?.push_token || null;
+      targetPushToken = empRecord?.permissions?.push_token || null;
+    }
+
+    if (!targetPushToken && clientId) {
+      const { data: empRecord } = await supabase
+        .from('employees')
+        .select('permissions')
+        .eq('department', clientId)
+        .eq('role', 'Client')
+        .limit(1)
+        .maybeSingle();
+      targetPushToken = empRecord?.permissions?.push_token || null;
     }
 
     if (targetPushToken) {
