@@ -29,11 +29,19 @@ import {
   Sparkles,
   MessageCircle,
   Copy,
+  Paperclip,
 } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { createClientNotification } from '../../lib/notificationService';
+import R2ImageThumbnail from '../../components/R2ImageThumbnail';
+import {
+  pickImageAndUpload,
+  takePhotoAndUpload,
+  pickDocumentAndUpload,
+  deleteR2File,
+} from '../../lib/r2Storage';
 
 // Default Templates from Web CRM
 const DEFAULT_TEMPLATES = [
@@ -103,6 +111,8 @@ export default function ClientHubScreen({ navigation, route }: any) {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
+  const [uploadingMilestoneId, setUploadingMilestoneId] = useState<number | null>(null);
+  const [uploadingChat, setUploadingChat] = useState(false);
 
   const fetchMilestonesAndChat = async () => {
     if (!clientId) return;
@@ -334,6 +344,181 @@ export default function ClientHubScreen({ navigation, route }: any) {
     }
   };
 
+  // Staff attaches file / photo to a client milestone
+  const promptStaffUploadFile = (milestoneId: number) => {
+    Alert.alert(
+      'Attach File to Milestone',
+      'Upload drawings, CAD files, site photos or blueprints to Cloudflare R2.',
+      [
+        {
+          text: '📸 Take Site Photo',
+          onPress: () => handleStaffUploadFile(milestoneId, 'camera'),
+        },
+        {
+          text: '🖼️ Choose from Gallery',
+          onPress: () => handleStaffUploadFile(milestoneId, 'gallery'),
+        },
+        {
+          text: '📄 Choose Document (PDF, DWG)',
+          onPress: () => handleStaffUploadFile(milestoneId, 'document'),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleStaffUploadFile = async (milestoneId: number, mode: 'camera' | 'gallery' | 'document') => {
+    setUploadingMilestoneId(milestoneId);
+    try {
+      let res = null;
+      if (mode === 'camera') {
+        res = await takePhotoAndUpload('client_milestones');
+      } else if (mode === 'gallery') {
+        res = await pickImageAndUpload('client_milestones');
+      } else {
+        res = await pickDocumentAndUpload('client_milestones');
+      }
+
+      if (!res) {
+        setUploadingMilestoneId(null);
+        return;
+      }
+
+      const fileObj = {
+        id: Date.now(),
+        name: res.name,
+        fileKey: res.key,
+        url: res.url,
+        author: user?.name || 'Dayal Team',
+        role: 'Staff',
+        timestamp: new Date().toISOString(),
+      };
+
+      const updated = milestones.map(m => {
+        if (m.id === milestoneId) {
+          return { ...m, files: [...(m.files || []), fileObj] };
+        }
+        return m;
+      });
+
+      setMilestones(updated);
+      await persistMilestones(updated);
+
+      const targetM = milestones.find(m => m.id === milestoneId);
+
+      // NOTIFY CLIENT!
+      await createClientNotification({
+        clientId,
+        clientEmpId: employeeRecord?.id,
+        title: `📎 New Document Attached`,
+        message: `Dayal team attached "${res.name}" to Step ${targetM?.order || ''}: ${targetM?.title || ''}`,
+        module: 'milestone',
+        referenceId: clientId,
+      });
+
+      Alert.alert('Success', `Attached "${res.name}" to milestone.`);
+    } catch (err: any) {
+      Alert.alert('Upload Error', err.message || 'Could not upload to R2.');
+    } finally {
+      setUploadingMilestoneId(null);
+    }
+  };
+
+  const handleStaffDeleteFile = async (milestoneId: number, fileId: number, fileKey?: string) => {
+    Alert.alert('Delete File', 'Remove this attached file from Cloudflare R2?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            if (fileKey) await deleteR2File(fileKey);
+
+            const updated = milestones.map(m => {
+              if (m.id === milestoneId) {
+                return { ...m, files: (m.files || []).filter((f: any) => f.id !== fileId) };
+              }
+              return m;
+            });
+
+            setMilestones(updated);
+            await persistMilestones(updated);
+          } catch (e: any) {
+            Alert.alert('Error', 'Failed to delete file.');
+          }
+        },
+      },
+    ]);
+  };
+
+  // Staff sends file attachment in chat
+  const promptStaffAttachChat = () => {
+    Alert.alert('Send Attachment to Client', 'Send a drawing, site photo, or document in chat.', [
+      {
+        text: '📸 Take Site Photo',
+        onPress: () => handleStaffAttachChat('camera'),
+      },
+      {
+        text: '🖼️ Choose from Gallery',
+        onPress: () => handleStaffAttachChat('gallery'),
+      },
+      {
+        text: '📄 Choose Document (PDF, DWG)',
+        onPress: () => handleStaffAttachChat('document'),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const handleStaffAttachChat = async (mode: 'camera' | 'gallery' | 'document') => {
+    if (!clientId) return;
+    setUploadingChat(true);
+
+    try {
+      let res = null;
+      if (mode === 'camera') {
+        res = await takePhotoAndUpload(`chat/${clientId}`);
+      } else if (mode === 'gallery') {
+        res = await pickImageAndUpload(`chat/${clientId}`);
+      } else {
+        res = await pickDocumentAndUpload(`chat/${clientId}`);
+      }
+
+      if (!res) {
+        setUploadingChat(false);
+        return;
+      }
+
+      const newMsg = {
+        client_id: clientId,
+        sender_type: 'admin',
+        message: res.name,
+        file_url: res.key,
+        file_name: res.name,
+      };
+
+      const { data, error } = await supabase.from('client_messages').insert([newMsg]).select();
+      if (error) throw error;
+
+      if (data && data[0]) {
+        setChatMessages(prev => [...prev, data[0]]);
+      }
+
+      // NOTIFY CLIENT!
+      await createClientNotification({
+        clientId,
+        clientEmpId: employeeRecord?.id,
+        title: `📎 New File from Dayal Team`,
+        message: `Sent file: "${res.name}"`,
+        module: 'chat',
+      });
+    } catch (err: any) {
+      Alert.alert('Upload Error', err.message || 'Could not upload attachment.');
+    } finally {
+      setUploadingChat(false);
+    }
+  };
+
   const completedCount = milestones.filter(m => m.completed).length;
   const progressPercent = milestones.length > 0 ? Math.round((completedCount / milestones.length) * 100) : 0;
 
@@ -485,9 +670,55 @@ export default function ClientHubScreen({ navigation, route }: any) {
                     </View>
                   </View>
 
-                  {/* Expanded: Staff Comments & Client Updates */}
+                  {/* Expanded: Staff Comments & Client Updates & R2 Files */}
                   {isExpanded && (
                     <View style={styles.expandedBox}>
+                      {/* Attached Documents & Photos */}
+                      <View style={{ marginBottom: 12 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <Text style={styles.expandedSubTitle}>Documents & Site Photos</Text>
+                          <TouchableOpacity
+                            style={styles.staffAttachBtn}
+                            onPress={() => promptStaffUploadFile(m.id)}
+                            disabled={uploadingMilestoneId === m.id}
+                          >
+                            {uploadingMilestoneId === m.id ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <>
+                                <Plus size={12} color="#FFFFFF" />
+                                <Text style={styles.staffAttachBtnText}>+ Attach Drawing / Photo</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+
+                        {Array.isArray(m.files) && m.files.length > 0 ? (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 4 }}>
+                            {m.files.map((f: any) => (
+                              <R2ImageThumbnail
+                                key={f.id}
+                                fileKey={f.fileKey}
+                                url={f.url}
+                                fileName={f.name}
+                                author={f.author}
+                                timestamp={f.timestamp}
+                                showDelete={true}
+                                onDelete={() => handleStaffDeleteFile(m.id, f.id, f.fileKey)}
+                              />
+                            ))}
+                          </ScrollView>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.staffNoFilesBox}
+                            onPress={() => promptStaffUploadFile(m.id)}
+                          >
+                            <FileText size={15} color={Colors.textMuted} />
+                            <Text style={styles.staffNoFilesText}>No blueprints or photos attached. Tap to upload.</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
                       <Text style={styles.expandedSubTitle}>Milestone Communication Notes</Text>
 
                       {hasComments ? (
@@ -565,9 +796,26 @@ export default function ClientHubScreen({ navigation, route }: any) {
                       <Text style={[styles.chatSender, isStaff ? styles.chatStaffSender : styles.chatClientSender]}>
                         {isStaff ? 'Dayal Team (You)' : clientName}
                       </Text>
-                      <Text style={[styles.chatMsgText, isStaff ? styles.chatStaffText : styles.chatClientText]}>
-                        {msg.message}
-                      </Text>
+
+                      {msg.file_url ? (
+                        <View style={{ marginTop: 4, marginBottom: 4 }}>
+                          <R2ImageThumbnail
+                            fileKey={msg.file_url}
+                            fileName={msg.file_name || msg.message}
+                            style={{ marginRight: 0, marginBottom: 0, width: 200, height: 150 }}
+                          />
+                          {msg.message && msg.message !== msg.file_name && (
+                            <Text style={[styles.chatMsgText, isStaff ? styles.chatStaffText : styles.chatClientText, { marginTop: 4 }]}>
+                              {msg.message}
+                            </Text>
+                          )}
+                        </View>
+                      ) : (
+                        <Text style={[styles.chatMsgText, isStaff ? styles.chatStaffText : styles.chatClientText]}>
+                          {msg.message}
+                        </Text>
+                      )}
+
                       <Text style={[styles.chatTime, isStaff ? styles.chatStaffTime : styles.chatClientTime]}>
                         {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </Text>
@@ -580,6 +828,19 @@ export default function ClientHubScreen({ navigation, route }: any) {
 
           {/* Chat Input */}
           <View style={styles.chatInputRow}>
+            <TouchableOpacity
+              style={styles.chatAttachBtn}
+              onPress={promptStaffAttachChat}
+              disabled={uploadingChat}
+              activeOpacity={0.7}
+            >
+              {uploadingChat ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Paperclip size={20} color={Colors.textMuted} />
+              )}
+            </TouchableOpacity>
+
             <TextInput
               style={styles.chatTextInput}
               placeholder={`Message ${clientName}...`}
@@ -1020,6 +1281,14 @@ const styles = StyleSheet.create({
     borderTopColor: '#E2E8F0',
     gap: 8,
   },
+  chatAttachBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   chatTextInput: {
     flex: 1,
     backgroundColor: '#F1F5F9',
@@ -1036,6 +1305,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  staffAttachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  staffAttachBtnText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  staffNoFilesBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 8,
+    gap: 6,
+    justifyContent: 'center',
+  },
+  staffNoFilesText: {
+    fontSize: 11,
+    color: Colors.textMuted,
   },
   modalOverlay: {
     flex: 1,

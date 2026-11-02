@@ -28,11 +28,22 @@ import {
   Sparkles,
   Phone,
   MessageCircle,
+  Camera,
+  Paperclip,
+  Plus,
+  Upload,
 } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { createNotification } from '../../lib/notificationService';
+import R2ImageThumbnail from '../../components/R2ImageThumbnail';
+import {
+  pickImageAndUpload,
+  takePhotoAndUpload,
+  pickDocumentAndUpload,
+  deleteR2File,
+} from '../../lib/r2Storage';
 
 export default function ClientDashboardScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -51,6 +62,7 @@ export default function ClientDashboardScreen({ navigation }: any) {
   const [expandedMilestoneId, setExpandedMilestoneId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState<{ [key: number]: string }>({});
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [uploadingMilestoneId, setUploadingMilestoneId] = useState<number | null>(null);
 
   const clientId = user?.clientId || user?.id;
 
@@ -205,6 +217,133 @@ export default function ClientDashboardScreen({ navigation }: any) {
             setMilestones(updated);
           } catch (e: any) {
             Alert.alert('Error', 'Failed to delete note.');
+          }
+        },
+      },
+    ]);
+  };
+
+  // Client uploads image / document to Cloudflare R2
+  const promptUploadFile = (milestoneId: number) => {
+    Alert.alert(
+      'Attach File or Photo',
+      'Upload site photos, drawings or documents directly to your milestone.',
+      [
+        {
+          text: '📸 Take Site Photo',
+          onPress: () => handleUploadFile(milestoneId, 'camera'),
+        },
+        {
+          text: '🖼️ Choose from Gallery',
+          onPress: () => handleUploadFile(milestoneId, 'gallery'),
+        },
+        {
+          text: '📄 Choose Document (PDF, DWG)',
+          onPress: () => handleUploadFile(milestoneId, 'document'),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleUploadFile = async (milestoneId: number, mode: 'camera' | 'gallery' | 'document') => {
+    setUploadingMilestoneId(milestoneId);
+    try {
+      let res = null;
+      if (mode === 'camera') {
+        res = await takePhotoAndUpload('client_milestones');
+      } else if (mode === 'gallery') {
+        res = await pickImageAndUpload('client_milestones');
+      } else {
+        res = await pickDocumentAndUpload('client_milestones');
+      }
+
+      if (!res) {
+        setUploadingMilestoneId(null);
+        return;
+      }
+
+      const fileObj = {
+        id: Date.now(),
+        name: res.name,
+        fileKey: res.key,
+        url: res.url,
+        author: user?.name || clientProfile?.name || 'Client',
+        role: 'Client',
+        timestamp: new Date().toISOString(),
+      };
+
+      const updated = milestones.map(m => {
+        if (m.id === milestoneId) {
+          return { ...m, files: [...(m.files || []), fileObj] };
+        }
+        return m;
+      });
+
+      if (employeeRecord?.id) {
+        const updatedPerms = { ...(employeeRecord.permissions || {}), milestones: updated };
+        await supabase
+          .from('employees')
+          .update({ permissions: updatedPerms })
+          .eq('id', employeeRecord.id);
+
+        setEmployeeRecord((prev: any) => ({ ...prev, permissions: updatedPerms }));
+      }
+
+      setMilestones(updated);
+
+      const targetM = milestones.find(m => m.id === milestoneId);
+
+      // ALERT ADMIN & ASSIGNED STAFF
+      await createNotification({
+        title: `📎 New File from ${user?.name || clientProfile?.name}`,
+        message: `Attached "${res.name}" under milestone "${targetM?.title || 'Milestone'}"`,
+        module: 'client',
+        referenceId: clientId,
+        recipientRole: 'Admin',
+        createdByName: user?.name || clientProfile?.name,
+      });
+
+      Alert.alert('Upload Successful', `"${res.name}" is now attached to this milestone.`);
+    } catch (err: any) {
+      Alert.alert('Upload Failed', err.message || 'Could not upload file to Cloudflare R2.');
+    } finally {
+      setUploadingMilestoneId(null);
+    }
+  };
+
+  const handleDeleteFile = async (milestoneId: number, fileId: number, fileKey?: string) => {
+    Alert.alert('Remove File', 'Are you sure you want to delete this attached file?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            if (fileKey) {
+              await deleteR2File(fileKey);
+            }
+
+            const updated = milestones.map(m => {
+              if (m.id === milestoneId) {
+                return { ...m, files: (m.files || []).filter((f: any) => f.id !== fileId) };
+              }
+              return m;
+            });
+
+            if (employeeRecord?.id) {
+              const updatedPerms = { ...(employeeRecord.permissions || {}), milestones: updated };
+              await supabase
+                .from('employees')
+                .update({ permissions: updatedPerms })
+                .eq('id', employeeRecord.id);
+
+              setEmployeeRecord((prev: any) => ({ ...prev, permissions: updatedPerms }));
+            }
+
+            setMilestones(updated);
+          } catch (e: any) {
+            Alert.alert('Error', 'Failed to delete file.');
           }
         },
       },
@@ -392,21 +531,58 @@ export default function ClientDashboardScreen({ navigation }: any) {
                   {/* Expanded Milestone Details: Comments & Files */}
                   {isExpanded && (
                     <View style={styles.expandedContent}>
-                      {/* Files Section */}
-                      {hasFiles && (
-                        <View style={styles.filesSection}>
-                          <Text style={styles.subSectionTitle}>Drawings & Attached Documents</Text>
-                          {m.files.map((f: any) => (
-                            <View key={f.id} style={styles.fileRow}>
-                              <FileText size={16} color={Colors.primary} />
-                              <Text style={styles.fileName} numberOfLines={1}>{f.name}</Text>
-                              <Text style={styles.fileDate}>
-                                {new Date(f.timestamp || Date.now()).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                              </Text>
-                            </View>
-                          ))}
+                      {/* Files & Photos Section (Cloudflare R2) */}
+                      <View style={styles.filesSection}>
+                        <View style={styles.filesSectionHeader}>
+                          <Text style={styles.subSectionTitle}>Documents & Site Photos</Text>
+                          <TouchableOpacity
+                            style={styles.attachBtn}
+                            onPress={() => promptUploadFile(m.id)}
+                            disabled={uploadingMilestoneId === m.id}
+                            activeOpacity={0.8}
+                          >
+                            {uploadingMilestoneId === m.id ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <>
+                                <Plus size={12} color="#FFFFFF" />
+                                <Text style={styles.attachBtnText}>+ Add Photo / File</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
                         </View>
-                      )}
+
+                        {hasFiles ? (
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.filesScrollContainer}
+                          >
+                            {m.files.map((f: any) => (
+                              <R2ImageThumbnail
+                                key={f.id}
+                                fileKey={f.fileKey}
+                                url={f.url}
+                                fileName={f.name}
+                                author={f.author}
+                                timestamp={f.timestamp}
+                                showDelete={f.role === 'Client' || f.author === user?.name}
+                                onDelete={() => handleDeleteFile(m.id, f.id, f.fileKey)}
+                              />
+                            ))}
+                          </ScrollView>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.noFilesBox}
+                            onPress={() => promptUploadFile(m.id)}
+                          >
+                            <FileText size={16} color={Colors.textMuted} />
+                            <Text style={styles.noFilesText}>
+                              No drawings or photos attached. Tap to upload.
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
 
                       {/* Comments & Discussion Thread */}
                       <View style={styles.commentsSection}>
@@ -837,6 +1013,45 @@ const styles = StyleSheet.create({
   filesSection: {
     marginTop: 10,
     marginBottom: 10,
+  },
+  filesSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  attachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  attachBtnText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  filesScrollContainer: {
+    paddingVertical: 4,
+  },
+  noFilesBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 10,
+    gap: 8,
+    justifyContent: 'center',
+  },
+  noFilesText: {
+    fontSize: 11,
+    color: Colors.textMuted,
   },
   subSectionTitle: {
     fontSize: 11.5,

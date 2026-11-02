@@ -14,11 +14,17 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Send, ArrowLeft, ShieldCheck, User, Sparkles } from 'lucide-react-native';
+import { Send, ArrowLeft, ShieldCheck, User, Sparkles, Paperclip, Camera } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { createNotification } from '../../lib/notificationService';
+import R2ImageThumbnail from '../../components/R2ImageThumbnail';
+import {
+  pickImageAndUpload,
+  takePhotoAndUpload,
+  pickDocumentAndUpload,
+} from '../../lib/r2Storage';
 
 export default function ClientChatScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -30,6 +36,7 @@ export default function ClientChatScreen({ navigation }: any) {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const fetchMessages = async () => {
@@ -119,6 +126,74 @@ export default function ClientChatScreen({ navigation }: any) {
     }
   };
 
+  const promptAttach = () => {
+    Alert.alert('Send Attachment', 'Share photos, drawings or documents with Dayal Team.', [
+      {
+        text: '📸 Take Site Photo',
+        onPress: () => handleAttachFile('camera'),
+      },
+      {
+        text: '🖼️ Choose from Gallery',
+        onPress: () => handleAttachFile('gallery'),
+      },
+      {
+        text: '📄 Choose Document (PDF, DWG)',
+        onPress: () => handleAttachFile('document'),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const handleAttachFile = async (mode: 'camera' | 'gallery' | 'document') => {
+    if (!clientId) return;
+    setUploading(true);
+
+    try {
+      let res = null;
+      if (mode === 'camera') {
+        res = await takePhotoAndUpload(`chat/${clientId}`);
+      } else if (mode === 'gallery') {
+        res = await pickImageAndUpload(`chat/${clientId}`);
+      } else {
+        res = await pickDocumentAndUpload(`chat/${clientId}`);
+      }
+
+      if (!res) {
+        setUploading(false);
+        return;
+      }
+
+      const newMsg = {
+        client_id: clientId,
+        sender_type: 'client',
+        message: res.name,
+        file_url: res.key,
+        file_name: res.name,
+      };
+
+      const { data, error } = await supabase.from('client_messages').insert([newMsg]).select();
+      if (error) throw error;
+
+      if (data && data[0]) {
+        setMessages(prev => [...prev, data[0]]);
+      }
+
+      // NOTIFY ADMIN IMMEDIATELY
+      await createNotification({
+        title: `📎 New File from ${user?.name || 'Client'}`,
+        message: `Sent attachment: "${res.name}"`,
+        module: 'client',
+        referenceId: clientId,
+        recipientRole: 'Admin',
+        createdByName: user?.name || 'Client',
+      });
+    } catch (err: any) {
+      Alert.alert('Upload Error', err.message || 'Could not upload attachment to Cloudflare R2.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const formatMessageTime = (isoString: string) => {
     try {
       const d = new Date(isoString);
@@ -184,9 +259,26 @@ export default function ClientChatScreen({ navigation }: any) {
                     <Text style={[styles.senderLabel, isClient ? styles.clientSenderLabel : styles.teamSenderLabel]}>
                       {isClient ? 'You' : 'Dayal Team'}
                     </Text>
-                    <Text style={[styles.messageText, isClient ? styles.clientMessageText : styles.teamMessageText]}>
-                      {item.message}
-                    </Text>
+
+                    {item.file_url ? (
+                      <View style={{ marginTop: 4, marginBottom: 4 }}>
+                        <R2ImageThumbnail
+                          fileKey={item.file_url}
+                          fileName={item.file_name || item.message}
+                          style={{ marginRight: 0, marginBottom: 0, width: 200, height: 150 }}
+                        />
+                        {item.message && item.message !== item.file_name && (
+                          <Text style={[styles.messageText, isClient ? styles.clientMessageText : styles.teamMessageText, { marginTop: 4 }]}>
+                            {item.message}
+                          </Text>
+                        )}
+                      </View>
+                    ) : (
+                      <Text style={[styles.messageText, isClient ? styles.clientMessageText : styles.teamMessageText]}>
+                        {item.message}
+                      </Text>
+                    )}
+
                     <Text style={[styles.timeText, isClient ? styles.clientTimeText : styles.teamTimeText]}>
                       {formatMessageTime(item.created_at)}
                     </Text>
@@ -199,6 +291,19 @@ export default function ClientChatScreen({ navigation }: any) {
 
         {/* Message Input Bar */}
         <View style={styles.inputContainer}>
+          <TouchableOpacity
+            style={styles.attachButton}
+            onPress={promptAttach}
+            disabled={uploading}
+            activeOpacity={0.7}
+          >
+            {uploading ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <Paperclip size={20} color={Colors.textMuted} />
+            )}
+          </TouchableOpacity>
+
           <TextInput
             style={styles.input}
             placeholder="Type your message to Dayal team..."
@@ -396,6 +501,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
     gap: 8,
+  },
+  attachButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   input: {
     flex: 1,
