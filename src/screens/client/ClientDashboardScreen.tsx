@@ -665,7 +665,7 @@ export default function ClientDashboardScreen({ navigation }: any) {
               onPress={() => navigation.navigate('Chat')}
             >
               <MessageCircle size={16} color={Colors.primaryDark} />
-              <Text style={styles.chatSupportBtnText}>Live Chat</Text>
+              <Text style={styles.chatSupportBtnText}>Chat</Text>
             </TouchableOpacity>
           </View>
         </View>

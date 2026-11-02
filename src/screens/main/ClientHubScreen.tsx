@@ -766,7 +766,7 @@ export default function ClientHubScreen({ navigation, route }: any) {
           )}
         </ScrollView>
       ) : (
-        // Tab 2: Live Chat
+        // Tab 2: Client Chat
         <View style={{ flex: 1 }}>
           <ScrollView
             showsVerticalScrollIndicator={false}

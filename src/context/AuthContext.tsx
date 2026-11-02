@@ -130,13 +130,37 @@ export const AuthProvider = ({ children }: any) => {
     try {
       const trimmed = identifier.trim().toLowerCase();
 
-      // 1. Primary check: employees table where role = 'Client'
-      const { data: empClient } = await supabase
+      // 1. Primary check: employees table where role = 'Client' and email (username) = trimmed
+      let { data: empClient } = await supabase
         .from('employees')
         .select('*')
         .ilike('email', trimmed)
         .eq('role', 'Client')
         .maybeSingle();
+
+      // 2. If not found by username directly, check if identifier matches client phone number
+      if (!empClient) {
+        const { data: matchedClients } = await supabase
+          .from('clients')
+          .select('id')
+          .or(`phone.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
+          .limit(5);
+
+        if (matchedClients && matchedClients.length > 0) {
+          const clientIds = matchedClients.map(c => String(c.id));
+          const { data: matchedEmp } = await supabase
+            .from('employees')
+            .select('*')
+            .in('department', clientIds)
+            .eq('role', 'Client')
+            .limit(1)
+            .maybeSingle();
+
+          if (matchedEmp) {
+            empClient = matchedEmp;
+          }
+        }
+      }
 
       if (empClient) {
         if (password && empClient.password && empClient.password !== password) {
@@ -173,7 +197,7 @@ export const AuthProvider = ({ children }: any) => {
         return { success: true };
       }
 
-      // 2. Prevent employees/admins from logging in here
+      // 3. Prevent employees/admins from logging in here
       const { data: staffAccount } = await supabase
         .from('employees')
         .select('id, role')
@@ -187,33 +211,7 @@ export const AuthProvider = ({ children }: any) => {
         };
       }
 
-      // 3. Fallback: check clients table by email or phone
-      const { data: directClient } = await supabase
-        .from('clients')
-        .select('*')
-        .or(`email.ilike.${trimmed},phone.ilike.${trimmed}`)
-        .limit(1);
-
-      if (directClient && directClient.length > 0) {
-        const c = directClient[0];
-        const clientProfile: AppUser = {
-          id: c.id,
-          clientId: c.id,
-          name: c.name || 'Valued Client',
-          email: c.email || trimmed,
-          role: 'Client',
-        };
-
-        setRole('Client');
-        setUser(clientProfile);
-        await AsyncStorage.setItem('@user_role', 'Client');
-        await AsyncStorage.setItem('@user_data', JSON.stringify(clientProfile));
-        syncUserPushToken(c.id, 'Client');
-
-        return { success: true };
-      }
-
-      return { success: false, error: 'Client account not found. Please contact Dayal office.' };
+      return { success: false, error: 'Client portal credentials not found. Please check your username/phone and password.' };
     } catch (err: any) {
       return { success: false, error: err.message || 'Client login failed' };
     }

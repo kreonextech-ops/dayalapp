@@ -59,7 +59,7 @@ export default function ClientTabNavigator() {
         name="Chat"
         component={ClientChatScreen}
         options={{
-          tabBarLabel: 'Live Chat',
+          tabBarLabel: 'Chat',
           tabBarIcon: ({ color }) => <MessageSquare color={color} size={20} />,
         }}
       />

@@ -212,7 +212,7 @@ export default function ClientLoginsScreen({ navigation }: any) {
           <Search size={18} color={Colors.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by client, phone, or login ID..."
+            placeholder="Search by client, phone, or username..."
             placeholderTextColor={Colors.textMuted}
             value={tableSearch}
             onChangeText={setTableSearch}
@@ -255,8 +255,8 @@ export default function ClientLoginsScreen({ navigation }: any) {
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.clientName}>{displayName}</Text>
                     <View style={styles.metaRow}>
-                      <Mail size={12} color={Colors.textMuted} />
-                      <Text style={styles.emailText}>{item.email}</Text>
+                      <User size={12} color={Colors.textMuted} />
+                      <Text style={styles.emailText}>Username: {item.email}</Text>
                     </View>
                     {linkedClient?.phone && (
                       <View style={[styles.metaRow, { marginTop: 2 }]}>
@@ -379,7 +379,7 @@ export default function ClientLoginsScreen({ navigation }: any) {
                               onPress={() => {
                                 setSelectedClientRecord(c);
                                 setSelectedClientId(c.id);
-                                const defaultUsername = c.phone || c.email?.split('@')[0] || c.name.toLowerCase().replace(/\s+/g, '');
+                                const defaultUsername = c.phone || c.name.toLowerCase().replace(/[^a-z0-9]/g, '');
                                 if (!loginEmail) {
                                   setLoginEmail(defaultUsername);
                                 }
@@ -406,10 +406,10 @@ export default function ClientLoginsScreen({ navigation }: any) {
                 </View>
               )}
 
-              <Text style={[styles.inputLabel, { marginTop: 14 }]}>Portal Login ID (Username / Email / Phone) *</Text>
+              <Text style={[styles.inputLabel, { marginTop: 14 }]}>Portal Login ID (Username) *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="e.g. client phone or email"
+                placeholder="e.g. client phone or username"
                 placeholderTextColor={Colors.textMuted}
                 value={loginEmail}
                 onChangeText={setLoginEmail}

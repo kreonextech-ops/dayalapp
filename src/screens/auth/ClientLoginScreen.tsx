@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
-import { ArrowLeft, Mail, Lock, Eye, EyeOff, CheckSquare, Square } from 'lucide-react-native';
+import { ArrowLeft, User, Lock, Eye, EyeOff, CheckSquare, Square, ShieldCheck } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 
 export default function ClientLoginScreen({ navigation }: any) {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [keepLogged, setKeepLogged] = useState(false);
@@ -14,13 +14,17 @@ export default function ClientLoginScreen({ navigation }: any) {
   const { signInClient } = useAuth();
 
   const handleLogin = async () => {
-    if (!email.trim()) {
-      Alert.alert('Required', 'Please enter your registered email address or phone.');
+    if (!username.trim()) {
+      Alert.alert('Required', 'Please enter your username or registered phone number.');
+      return;
+    }
+    if (!password.trim()) {
+      Alert.alert('Required', 'Please enter your password.');
       return;
     }
 
     setIsSubmitting(true);
-    const res = await signInClient(email, password);
+    const res = await signInClient(username, password);
     setIsSubmitting(false);
 
     if (res.success) {
@@ -49,21 +53,21 @@ export default function ClientLoginScreen({ navigation }: any) {
             <Text style={styles.tagline}>BUILDING TRUST, SHAPING TOMORROW</Text>
           </View>
 
-          <Text style={styles.title}>Client Login</Text>
-          <Text style={styles.subtitle}>Track your project progress, view updates, payments and documents.</Text>
+          <Text style={styles.title}>Client Portal Login</Text>
+          <Text style={styles.subtitle}>Track your project milestones, drawings, payments and team chat.</Text>
 
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
-              <Mail color={Colors.textMuted} size={20} style={styles.inputIcon} />
+              <User color={Colors.textMuted} size={20} style={styles.inputIcon} />
               <View style={styles.inputField}>
-                <Text style={styles.inputLabel}>Email Address</Text>
+                <Text style={styles.inputLabel}>Login ID (Username / Phone)</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="client@example.com"
-                  value={email}
-                  onChangeText={setEmail}
+                  placeholder="Enter your username or phone"
+                  placeholderTextColor={Colors.textMuted}
+                  value={username}
+                  onChangeText={setUsername}
                   autoCapitalize="none"
-                  keyboardType="email-address"
                 />
               </View>
             </View>
@@ -75,6 +79,7 @@ export default function ClientLoginScreen({ navigation }: any) {
                 <TextInput
                   style={styles.input}
                   placeholder="••••••••"
+                  placeholderTextColor={Colors.textMuted}
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
@@ -97,10 +102,6 @@ export default function ClientLoginScreen({ navigation }: any) {
               }
               <Text style={styles.checkboxText}>Keep me logged in</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity>
-              <Text style={styles.forgotText}>Forgot Password?</Text>
-            </TouchableOpacity>
           </View>
 
           <TouchableOpacity 
@@ -115,15 +116,12 @@ export default function ClientLoginScreen({ navigation }: any) {
             )}
           </TouchableOpacity>
 
-          <View style={styles.dividerContainer}>
-            <View style={styles.divider} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.divider} />
+          <View style={styles.infoBanner}>
+            <ShieldCheck size={16} color="#059669" />
+            <Text style={styles.infoBannerText}>
+              Portal credentials are issued by your project manager or Dayal office administrator.
+            </Text>
           </View>
-
-          <TouchableOpacity style={styles.googleButton}>
-            <Text style={styles.googleButtonText}>Continue with Google</Text>
-          </TouchableOpacity>
           
           <View style={styles.footerContainer}>
              <Text style={styles.footerTextPrimary}>Your Dream</Text>
@@ -277,6 +275,24 @@ const styles = StyleSheet.create({
   googleButtonText: {
     color: Colors.text,
     fontSize: 16,
+    fontWeight: '500',
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 10,
+    padding: 12,
+    gap: 8,
+    marginBottom: 20,
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#065F46',
+    lineHeight: 16,
     fontWeight: '500',
   },
   footerContainer: {
